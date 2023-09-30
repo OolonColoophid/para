@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		5B97A6D12AC8800200600CCE /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B97A6D02AC8800200600CCE /* main.swift */; };
+		5B97A6D92AC880AB00600CCE /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 5B97A6D82AC880AB00600CCE /* ArgumentParser */; };
+		5B97A6E32AC8837E00600CCE /* paraTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B97A6E22AC8837E00600CCE /* paraTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,10 +27,20 @@
 /* Begin PBXFileReference section */
 		5B97A6CD2AC8800200600CCE /* para */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = para; sourceTree = BUILT_PRODUCTS_DIR; };
 		5B97A6D02AC8800200600CCE /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		5B97A6E02AC8837E00600CCE /* paraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = paraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B97A6E22AC8837E00600CCE /* paraTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = paraTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		5B97A6CA2AC8800200600CCE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B97A6D92AC880AB00600CCE /* ArgumentParser in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B97A6DD2AC8837E00600CCE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -42,6 +54,7 @@
 			isa = PBXGroup;
 			children = (
 				5B97A6CF2AC8800200600CCE /* para */,
+				5B97A6E12AC8837E00600CCE /* paraTests */,
 				5B97A6CE2AC8800200600CCE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				5B97A6CD2AC8800200600CCE /* para */,
+				5B97A6E02AC8837E00600CCE /* paraTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -60,6 +74,14 @@
 				5B97A6D02AC8800200600CCE /* main.swift */,
 			);
 			path = para;
+			sourceTree = "<group>";
+		};
+		5B97A6E12AC8837E00600CCE /* paraTests */ = {
+			isa = PBXGroup;
+			children = (
+				5B97A6E22AC8837E00600CCE /* paraTests.swift */,
+			);
+			path = paraTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -78,9 +100,29 @@
 			dependencies = (
 			);
 			name = para;
+			packageProductDependencies = (
+				5B97A6D82AC880AB00600CCE /* ArgumentParser */,
+			);
 			productName = para;
 			productReference = 5B97A6CD2AC8800200600CCE /* para */;
 			productType = "com.apple.product-type.tool";
+		};
+		5B97A6DF2AC8837E00600CCE /* paraTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B97A6E42AC8837E00600CCE /* Build configuration list for PBXNativeTarget "paraTests" */;
+			buildPhases = (
+				5B97A6DC2AC8837E00600CCE /* Sources */,
+				5B97A6DD2AC8837E00600CCE /* Frameworks */,
+				5B97A6DE2AC8837E00600CCE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = paraTests;
+			productName = paraTests;
+			productReference = 5B97A6E02AC8837E00600CCE /* paraTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -95,6 +137,9 @@
 					5B97A6CC2AC8800200600CCE = {
 						CreatedOnToolsVersion = 15.0;
 					};
+					5B97A6DF2AC8837E00600CCE = {
+						CreatedOnToolsVersion = 15.0;
+					};
 				};
 			};
 			buildConfigurationList = 5B97A6C82AC8800200600CCE /* Build configuration list for PBXProject "para" */;
@@ -106,14 +151,28 @@
 				Base,
 			);
 			mainGroup = 5B97A6C42AC8800200600CCE;
+			packageReferences = (
+				5B97A6D72AC880AB00600CCE /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
 			productRefGroup = 5B97A6CE2AC8800200600CCE /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				5B97A6CC2AC8800200600CCE /* para */,
+				5B97A6DF2AC8837E00600CCE /* paraTests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5B97A6DE2AC8837E00600CCE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		5B97A6C92AC8800200600CCE /* Sources */ = {
@@ -121,6 +180,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				5B97A6D12AC8800200600CCE /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B97A6DC2AC8837E00600CCE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B97A6E32AC8837E00600CCE /* paraTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,6 +315,7 @@
 		5B97A6D52AC8800200600CCE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = ULRG2PRWF8;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -259,10 +327,41 @@
 		5B97A6D62AC8800200600CCE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = ULRG2PRWF8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5B97A6E52AC8837E00600CCE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ULRG2PRWF8;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hocking.paraTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5B97A6E62AC8837E00600CCE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ULRG2PRWF8;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hocking.paraTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -288,7 +387,35 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5B97A6E42AC8837E00600CCE /* Build configuration list for PBXNativeTarget "paraTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B97A6E52AC8837E00600CCE /* Debug */,
+				5B97A6E62AC8837E00600CCE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5B97A6D72AC880AB00600CCE /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5B97A6D82AC880AB00600CCE /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5B97A6D72AC880AB00600CCE /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5B97A6C52AC8800200600CCE /* Project object */;
 }
