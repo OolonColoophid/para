@@ -24,7 +24,7 @@ struct Para: ParsableCommand {
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME",
         version: versionString,  // Dynamic version string
-        subcommands: [Create.self, Archive.self, Delete.self, List.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self]
     )
 }
 
@@ -112,7 +112,7 @@ extension Para {
         static let configuration = CommandConfiguration(abstract: "Delete a project or area")
 
         @Argument(
-            help: "Type of folder to archive (project or area)",
+            help: "Type of folder to delete (project or area)",
             completion: CompletionKind.list(["project", "area"])
         )
         var type: FolderType        
@@ -165,6 +165,40 @@ extension Para {
         }
     }
 
+    struct Open: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Open a project or area")
+
+        @Argument(
+            help: "Type of folder to open (project or area)",
+            completion: CompletionKind.list(["project", "area"])
+        )
+        var type: FolderType
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _ in
+                if CommandLine.arguments.contains("project") {
+                    return Para.completeFolders(type: "project")
+                }
+                if CommandLine.arguments.contains("area") {
+                    return Para.completeFolders(type: "area")
+                }
+                return []
+            }
+        )
+        var name: String
+
+        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
+
+        func run() throws {
+            let folderPath = Para.getFolderPath(type: type.rawValue, name: name)
+            let expandedPath = (folderPath as NSString).expandingTildeInPath
+
+            if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
 }
 
 // MARK: Helpers
