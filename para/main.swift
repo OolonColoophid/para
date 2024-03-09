@@ -5,6 +5,8 @@
 //  Created by Ian Hocking on 30/09/2023.
 //
 
+// TODO: Search for text - p, a, r, archive scope
+
 import Foundation
 import ArgumentParser
 import AppKit
@@ -22,7 +24,7 @@ struct Para: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
-        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME",
+        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE",
         version: versionString,  // Dynamic version string
         subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self]
     )
@@ -50,7 +52,7 @@ extension Para {
         }
 
         func run() throws {
-            let folderPath = Para.getFolderPath(type: type.rawValue, name: name)
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             Para.createFolder(at: folderPath)
             Para.createFile(at: "\(folderPath)/.projectile", content: "")
 
@@ -96,9 +98,9 @@ extension Para {
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
 
         func run() {
-            let fromPath = Para.getFolderPath(type: type.rawValue, name: name)
-            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-            let toPath = "\(homeDir)/Documents/archive/\(name)"
+            let fromPath: String = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
+            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Documents/archive/\(name)"
 
             Para.moveToArchive(from: fromPath, to: toPath)
 
@@ -134,7 +136,7 @@ extension Para {
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
 
         func run() throws {
-            let folderPath = Para.getFolderPath(type: type.rawValue, name: name)
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let expandedPath = (folderPath as NSString).expandingTildeInPath
 
             do {
@@ -191,7 +193,7 @@ extension Para {
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
 
         func run() throws {
-            let folderPath = Para.getFolderPath(type: type.rawValue, name: name)
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let expandedPath = (folderPath as NSString).expandingTildeInPath
 
             if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
@@ -203,13 +205,21 @@ extension Para {
 
 // MARK: Helpers
 extension Para {
-    static func getFolderPath(type: String, name: String) -> String {
+    static func getParaFolderPath(type: String, name: String) -> String {
         if let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] {
             return "\(paraHome)/\(type)s/\(name)"
         } else {
             // Fallback or error handling
             print("Error: PARA_HOME is not set.")
             return ""
+        }
+    }
+
+    static func getArchiveFolderPath(name: String) -> String? {
+        if let archiveFoler = ProcessInfo.processInfo.environment["PARA_ARCHIVE"] {
+            return "\(archiveFoler)/\(name)"
+        } else {
+            return nil
         }
     }
 
