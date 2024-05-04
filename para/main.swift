@@ -5,7 +5,9 @@
 //  Created by Ian Hocking on 30/09/2023.
 //
 
-// TODO: Search for text - p, a, r, archive scope
+// TODO: Search for text - p, a, r, archive scope. Best to do with:
+// > mdfind -onlyin . "kMDItemTextContent == 'Derek'c"
+// This will return all files (including non-text files) that contain Derek
 
 import Foundation
 import ArgumentParser
