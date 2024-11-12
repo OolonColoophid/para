@@ -102,7 +102,7 @@ extension Para {
         func run() {
             let fromPath: String = Para.getParaFolderPath(type: type.rawValue, name: name)
             let homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
-            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Documents/archive/\(name)"
+            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Dropbox/para/archive/\(name)"
 
             Para.moveToArchive(from: fromPath, to: toPath)
 
