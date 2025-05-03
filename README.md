@@ -27,24 +27,30 @@ git clone https://github.com/yourusername/para.git
 cd para
 ```
 
-3. Build the project:
+3. Build and install using Mint (recommended):
 
 ```bash
-swift build -c release
+mint install
 ```
 
-4. Move the built binary to a directory in your `PATH`:
-
+4. Or build manually:
 ```bash
+swift build -c release
 mv .build/release/para /usr/local/bin/
 ```
 
 ## Configuration
 
-Para relies on environment variables to determine the location of your PARA folders. Set the following environment variables in your shell configuration file (e.g., `.bashrc`, `.zshrc`):
+Para relies on environment variables to determine the location of your PARA folders. Set these in your shell configuration file (e.g., `.bashrc`, `.zshrc`):
 
-- `PARA_HOME`: The base directory for your PARA system (default: `~/Documents/PARA`)
-- `PARA_ARCHIVE`: The directory for archived projects and areas (default: `~/Documents/archive`)
+- `PARA_HOME`: Base directory for your PARA system (defaults to `~/Documents/PARA` if not set)
+- `PARA_ARCHIVE`: Directory for archived projects/areas (defaults to `~/Documents/archive` if not set)
+
+Example:
+```bash
+export PARA_HOME=~/Dropbox/PARA
+export PARA_ARCHIVE=~/Dropbox/Archive
+```
 
 ## Usage
 
@@ -114,8 +120,21 @@ The `#+TITLE:` keyword in the Org mode file sets the title of the document, whic
 
 ## Contributing
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome! Please:
+
+1. Open an issue first for significant changes
+2. Follow Swift coding conventions
+3. Add tests when appropriate
+4. Keep documentation up-to-date
+
+See our [Code of Conduct](CODE_OF_CONDUCT.md) for more information about participating in this project.
 
 ## License
 
-Para is released under the [MIT License](https://opensource.org/licenses/MIT).
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Para is released under the MIT License. See [LICENSE](LICENSE) for details.
+
+## Documentation
+
+For more detailed documentation about commands and configuration, see our [wiki](#) (coming soon).
