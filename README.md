@@ -1,6 +1,6 @@
 # Para - A Command Line Tool for Managing Your PARA Productivity System
 
-[![Swift](https://img.shields.io/badge/Swift-5.0-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-5.6-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Para is a command line tool designed to help you manage your personal productivity system based on the PARA (Projects, Areas, Resources, Archives) method. It works in an Emacs context, in that new files are created in [Org mode](https://orgmode.org) format. The PARA method, popularized by [Tiago Forte](https://fortelabs.com), is a framework for organizing your digital life and enhancing your productivity.
@@ -18,7 +18,7 @@ Para is a command line tool designed to help you manage your personal productivi
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/para.git
+git clone https://github.com/OolonColoophid/para.git
 ```
 
 2. Navigate to the project directory:
@@ -27,13 +27,8 @@ git clone https://github.com/yourusername/para.git
 cd para
 ```
 
-3. Build and install using Mint (recommended):
+3. Build and install:
 
-```bash
-mint install
-```
-
-4. Or build manually:
 ```bash
 swift build -c release
 mv .build/release/para /usr/local/bin/
@@ -131,7 +126,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for more information about partici
 
 ## License
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Para is released under the MIT License. See [LICENSE](LICENSE) for details.
 
