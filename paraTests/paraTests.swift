@@ -458,17 +458,23 @@ class ParaTests: XCTestCase {
         do {
             try fileManager.createDirectory(atPath: "\(tempDir)/projects", withIntermediateDirectories: true, attributes: nil)
             try fileManager.createDirectory(atPath: "\(tempDir)/projects/projectToReveal", withIntermediateDirectories: true, attributes: nil)
+            
+            try fileManager.createDirectory(atPath: "\(tempDir)/areas", withIntermediateDirectories: true, attributes: nil)
+            try fileManager.createDirectory(atPath: "\(tempDir)/areas/areaToReveal", withIntermediateDirectories: true, attributes: nil)
         } catch {
             XCTFail("Failed to create test directories: \(error)")
         }
         
-        // Verify the folder exists
+        // Verify the folders exist
         var isDir: ObjCBool = false
-        let folderExists = fileManager.fileExists(atPath: "\(tempDir)/projects/projectToReveal", isDirectory: &isDir) && isDir.boolValue
-        XCTAssertTrue(folderExists, "Test folder should exist")
+        let projectFolderExists = fileManager.fileExists(atPath: "\(tempDir)/projects/projectToReveal", isDirectory: &isDir) && isDir.boolValue
+        XCTAssertTrue(projectFolderExists, "Project folder should exist")
+        
+        let areaFolderExists = fileManager.fileExists(atPath: "\(tempDir)/areas/areaToReveal", isDirectory: &isDir) && isDir.boolValue
+        XCTAssertTrue(areaFolderExists, "Area folder should exist")
         
         // Note: We can't directly test NSWorkspace.shared.open in a unit test,
-        // but we can verify that the folder to be revealed exists
+        // but we can verify that the folders to be revealed exist
         
         // Restore original environment
         if let originalValue = environment["PARA_HOME"] {

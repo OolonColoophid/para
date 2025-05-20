@@ -26,9 +26,9 @@ struct Para: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
-        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE",
+        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE",
         version: versionString,  // Dynamic version string
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Environment.self, Reveal.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Environment.self]
     )
 }
 
@@ -284,9 +284,9 @@ extension Para {
 
         @Argument(
             help: "Type of folder to reveal (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            completion: .list(["project", "area"])
         )
-        var type: FolderType?
+        var type: FolderType
 
         @Argument(
             help: "Name of the folder",
@@ -310,19 +310,7 @@ extension Para {
         var verbose = false
 
         func run() throws {
-            if let specifiedType = type {
-                // Use the specified type
-                revealFolder(type: specifiedType.rawValue, name: name)
-            } else {
-                // Try to find the folder in either projects or areas
-                if Para.folderExists(type: "project", name: name) {
-                    revealFolder(type: "project", name: name)
-                } else if Para.folderExists(type: "area", name: name) {
-                    revealFolder(type: "area", name: name)
-                } else {
-                    print("Error: Could not find '\(name)' in either projects or areas.")
-                }
-            }
+            revealFolder(type: type.rawValue, name: name)
         }
         
         func revealFolder(type: String, name: String) {
