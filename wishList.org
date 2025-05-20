@@ -1,0 +1,13 @@
+* Wishlist
+
+- At the moment, the --list option on its own does nothing. (It's intended for use with 'area' or 'project'.) When 'area' or 'project' are ommitted, it should list all areas. Likewise, --archive should be work without 'area' or 'project', as should --delete.
+
+  - Make sure we have tests for these. This might involve setting up a test area with folders and files - let me know and I can do this.
+
+  - If the journal.org file in the project or area's directory contains a line reading "#+DESCRIPTION: xxx", put the xxx description (maximum 80 characters) into a second column alongside the title of the project/area when printing the list.
+
+- Add an option --environment that will print current environment variables (e.g. $PARA_HOME and friends). If they don't exist, we'll need to supply the defaults)
+
+  - These will need tests too.
+
+- Add an option called --reveal, which will open the folder associated with the project or area
