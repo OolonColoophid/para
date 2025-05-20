@@ -80,8 +80,8 @@ The tool expects and manages the following structure:
 - Delete a project: `para delete project roofBuild`
 - List all areas: `para list area`
 - List all projects and areas: `para list`
-- Open a project: `para open project roofBuild`
-- Open a project folder in Finder: `para open project roofBuild --reveal`
+- Open a project's journal.org file: `para open project roofBuild`
+- Open a project folder in Finder: `para reveal project roofBuild`
 - Show environment settings: `para environment`
 
 ## Features

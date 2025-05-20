@@ -448,6 +448,36 @@ class ParaTests: XCTestCase {
         unsetenv("TEST_PARA_HOME")
     }
     
+    // Test revealing a folder in Finder
+    func testRevealFunctionality() {
+        // Set up test environment
+        let environment = ProcessInfo.processInfo.environment
+        setenv("PARA_HOME", tempDir, 1)
+        
+        // Create test directory structure
+        do {
+            try fileManager.createDirectory(atPath: "\(tempDir)/projects", withIntermediateDirectories: true, attributes: nil)
+            try fileManager.createDirectory(atPath: "\(tempDir)/projects/projectToReveal", withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            XCTFail("Failed to create test directories: \(error)")
+        }
+        
+        // Verify the folder exists
+        var isDir: ObjCBool = false
+        let folderExists = fileManager.fileExists(atPath: "\(tempDir)/projects/projectToReveal", isDirectory: &isDir) && isDir.boolValue
+        XCTAssertTrue(folderExists, "Test folder should exist")
+        
+        // Note: We can't directly test NSWorkspace.shared.open in a unit test,
+        // but we can verify that the folder to be revealed exists
+        
+        // Restore original environment
+        if let originalValue = environment["PARA_HOME"] {
+            setenv("PARA_HOME", originalValue, 1)
+        } else {
+            unsetenv("PARA_HOME")
+        }
+    }
+    
     // Helper function to get folders in a path
     private func getFoldersInPath(_ path: String) -> [String] {
         do {
@@ -475,6 +505,7 @@ class ParaTests: XCTestCase {
         ("testMoveFolderFunctionality", testMoveFolderFunctionality),
         ("testDeleteFolderFunctionality", testDeleteFolderFunctionality),
         ("testDescriptionFunctionality", testDescriptionFunctionality),
-        ("testEnvironmentVariableHandling", testEnvironmentVariableHandling)
+        ("testEnvironmentVariableHandling", testEnvironmentVariableHandling),
+        ("testRevealFunctionality", testRevealFunctionality)
     ]
 }

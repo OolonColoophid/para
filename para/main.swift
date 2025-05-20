@@ -28,7 +28,7 @@ struct Para: ParsableCommand {
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE",
         version: versionString,  // Dynamic version string
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Environment.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Environment.self, Reveal.self]
     )
 }
 
@@ -237,7 +237,9 @@ extension Para {
     }
 
     struct Open: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Open a project or area")
+        static let configuration = CommandConfiguration(
+            abstract: "Open a project or area's journal.org file"
+        )
 
         @Argument(
             help: "Type of folder to open (project or area)",
@@ -258,32 +260,79 @@ extension Para {
             }
         )
         var name: String
-
-        @Flag(name: .customLong("reveal"), help: "Open the folder instead of the journal.org file") 
-        var revealFolder = false
         
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") 
         var verbose = false
 
         func run() throws {
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
-            let expandedPath = (folderPath as NSString).expandingTildeInPath
             
-            if revealFolder {
-                // Open the folder in Finder
-                if let url = URL(string: "file://" + folderPath) {
-                    NSWorkspace.shared.open(url)
-                    if verbose {
-                        print("Opened folder for \(type.rawValue): \(name)")
-                    }
+            // Open the journal.org file
+            if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
+                NSWorkspace.shared.open(url)
+                if verbose {
+                    print("Opened journal.org for \(type.rawValue): \(name)")
                 }
+            }
+        }
+    }
+    
+    struct Reveal: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Open a project or area's folder in Finder"
+        )
+
+        @Argument(
+            help: "Type of folder to reveal (project or area)",
+            completion: CompletionKind.list(["project", "area"])
+        )
+        var type: FolderType?
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _ in
+                var items: [String] = []
+                if CommandLine.arguments.contains("project") {
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                } else {
+                    // If no type is specified, show both
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                }
+                return items
+            }
+        )
+        var name: String
+        
+        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") 
+        var verbose = false
+
+        func run() throws {
+            if let specifiedType = type {
+                // Use the specified type
+                revealFolder(type: specifiedType.rawValue, name: name)
             } else {
-                // Open the journal.org file
-                if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
-                    NSWorkspace.shared.open(url)
-                    if verbose {
-                        print("Opened journal.org for \(type.rawValue): \(name)")
-                    }
+                // Try to find the folder in either projects or areas
+                if Para.folderExists(type: "project", name: name) {
+                    revealFolder(type: "project", name: name)
+                } else if Para.folderExists(type: "area", name: name) {
+                    revealFolder(type: "area", name: name)
+                } else {
+                    print("Error: Could not find '\(name)' in either projects or areas.")
+                }
+            }
+        }
+        
+        func revealFolder(type: String, name: String) {
+            let folderPath = Para.getParaFolderPath(type: type, name: name)
+            
+            // Open the folder in Finder
+            if let url = URL(string: "file://" + folderPath) {
+                NSWorkspace.shared.open(url)
+                if verbose {
+                    print("Opened folder for \(type): \(name)")
                 }
             }
         }
