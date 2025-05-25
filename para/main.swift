@@ -15,20 +15,13 @@ import AppKit
 
 // MARK: CLI arguments
 struct Para: ParsableCommand {
-    static let versionString: String = {
-        if let infoDictionary = Bundle.main.infoDictionary,
-           let version = infoDictionary["CFBundleShortVersionString"] as? String,
-           let build = infoDictionary["CFBundleVersion"] as? String {
-            return "\(version) (\(build))"
-        }
-        return "Unknown Version"
-    }()
+    static let versionString: String = "0.1"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
         version: versionString,  // Dynamic version string
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Environment.self, AIOverview.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -94,6 +87,41 @@ extension Para {
     
     func run() throws {
         ParaGlobals.jsonMode = json
+        
+        if ParaGlobals.jsonMode {
+            let data: [String: Any] = [
+                "name": "Para",
+                "version": Para.versionString,
+                "description": "A utility for managing a local PARA organization system",
+                "usage": "Run 'para --help' for available commands",
+                "aiUsage": "Use 'para --json <command>' for machine-readable output",
+                "documentation": "Run 'para ai-overview' for comprehensive documentation"
+            ]
+            Para.outputJSONAny(data)
+        } else {
+            print("Para v\(Para.versionString) - PARA Organization System Manager")
+            print("")
+            print("Manage your Projects, Areas, Resources, and Archives from the command line.")
+            print("")
+            print("Common commands:")
+            print("  para list                    # List all projects and areas")
+            print("  para create project <name>   # Create a new project")
+            print("  para create area <name>      # Create a new area")
+            print("  para read <type> <name>      # Read journal content")
+            print("  para headings <type> <name>  # Show org-mode headings")
+            print("  para open <type> <name>      # Open project/area journal")
+            print("  para reveal <type> <name>    # Open folder in Finder")
+            print("")
+            print("For complete documentation:")
+            print("  para --help                  # Show all commands")
+            print("  para ai-overview             # Comprehensive guide")
+            print("")
+            print("For AI/programmatic usage:")
+            print("  para --json <command>        # Get machine-readable output")
+            print("")
+            print("Environment setup:")
+            print("  para environment             # Check configuration")
+        }
     }
 
     struct Create: ParsableCommand {
@@ -494,6 +522,130 @@ extension Para {
         }
     }
     
+    struct Read: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Read the entire journal.org file of a project or area"
+        )
+
+        @Argument(
+            help: "Type of folder (project or area)",
+            completion: CompletionKind.list(["project", "area"])
+        )
+        var type: FolderType
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _ in
+                if CommandLine.arguments.contains("project") {
+                    return Para.completeFolders(type: "project")
+                }
+                if CommandLine.arguments.contains("area") {
+                    return Para.completeFolders(type: "area")
+                }
+                return []
+            }
+        )
+        var name: String
+
+        func run() throws {
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let journalPath = "\(folderPath)/journal.org"
+            
+            // Check if the file exists
+            guard FileManager.default.fileExists(atPath: journalPath) else {
+                Para.outputError("Journal file not found for \(type.rawValue) '\(name)'")
+                return
+            }
+            
+            do {
+                let content = try String(contentsOfFile: journalPath, encoding: .utf8)
+                
+                if ParaGlobals.jsonMode {
+                    let data: [String: Any] = [
+                        "type": type.rawValue,
+                        "name": name,
+                        "journalPath": journalPath,
+                        "content": content,
+                        "lineCount": content.components(separatedBy: .newlines).count
+                    ]
+                    Para.outputJSONAny(data)
+                } else {
+                    print(content)
+                }
+            } catch {
+                Para.outputError("Failed to read journal file: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    struct Headings: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Read only the org-mode headings from a project or area's journal"
+        )
+
+        @Argument(
+            help: "Type of folder (project or area)",
+            completion: CompletionKind.list(["project", "area"])
+        )
+        var type: FolderType
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _ in
+                if CommandLine.arguments.contains("project") {
+                    return Para.completeFolders(type: "project")
+                }
+                if CommandLine.arguments.contains("area") {
+                    return Para.completeFolders(type: "area")
+                }
+                return []
+            }
+        )
+        var name: String
+
+        func run() throws {
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let journalPath = "\(folderPath)/journal.org"
+            
+            // Check if the file exists
+            guard FileManager.default.fileExists(atPath: journalPath) else {
+                Para.outputError("Journal file not found for \(type.rawValue) '\(name)'")
+                return
+            }
+            
+            do {
+                let content = try String(contentsOfFile: journalPath, encoding: .utf8)
+                let lines = content.components(separatedBy: .newlines)
+                
+                // Filter lines that start with '* ' (org-mode headings)
+                let headings = lines.filter { line in
+                    line.hasPrefix("* ")
+                }
+                
+                if ParaGlobals.jsonMode {
+                    let data: [String: Any] = [
+                        "type": type.rawValue,
+                        "name": name,
+                        "journalPath": journalPath,
+                        "headings": headings,
+                        "headingCount": headings.count
+                    ]
+                    Para.outputJSONAny(data)
+                } else {
+                    if headings.isEmpty {
+                        print("No headings found in \(type.rawValue) '\(name)'")
+                    } else {
+                        for heading in headings {
+                            print(heading)
+                        }
+                    }
+                }
+            } catch {
+                Para.outputError("Failed to read journal file: \(error.localizedDescription)")
+            }
+        }
+    }
+    
     struct Environment: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Display current environment settings for the PARA system"
@@ -562,6 +714,27 @@ extension Para {
         }
     }
     
+    struct Version: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Display Para version information"
+        )
+        
+        func run() {
+            if ParaGlobals.jsonMode {
+                let data: [String: Any] = [
+                    "version": Para.versionString,
+                    "name": "Para",
+                    "description": "A utility for managing a local PARA organization system"
+                ]
+                Para.outputJSONAny(data)
+            } else {
+                print("Para version \(Para.versionString)")
+                print("A utility for managing a local PARA organization system")
+                print("https://fortelabs.com/blog/para/")
+            }
+        }
+    }
+    
     struct AIOverview: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "ai-overview",
@@ -570,7 +743,7 @@ extension Para {
         
         func run() {
             print("""
-# Para CLI Tool - AI Overview
+# Para CLI Tool - AI Overview (v0.1)
 
 ## RECOMMENDED FOR AI USAGE
 **Always use the `--json` flag for machine-readable output:**
@@ -704,22 +877,55 @@ $PARA_HOME/
 
 ### 7. DIRECTORY
 **Purpose**: Return the absolute path to a project/area directory
-**Syntax**: `para directory <type> <name>`
+**Syntax**: `para [--json] directory <type> <name>`
 **Examples**:
   - `para directory project roofBuild` → `/Users/user/Dropbox/para/projects/roofBuild`
-  - `para directory area guitar` → `/Users/user/Documents/PARA/areas/guitar`
+  - `para --json directory area guitar` → structured path data
 **What it does**:
   - Outputs the full filesystem path
   - Useful for scripting and automation
   - Validates folder exists before returning path
 
-### 8. ENVIRONMENT
+### 8. READ
+**Purpose**: Read the entire journal.org file of a project or area
+**Syntax**: `para [--json] read <type> <name>`
+**Examples**:
+  - `para read project roofBuild` (human: outputs file content)
+  - `para --json read area guitar` (JSON: structured content with metadata)
+**What it does**:
+  - Reads and displays the complete journal.org file content
+  - Human mode: Prints file content directly to console
+  - JSON mode: Returns content with metadata (path, line count)
+
+### 9. HEADINGS
+**Purpose**: Read only the org-mode headings from a project/area's journal
+**Syntax**: `para [--json] headings <type> <name>`
+**Examples**:
+  - `para headings project roofBuild` (human: lists headings)
+  - `para --json headings area guitar` (JSON: structured heading data)
+**What it does**:
+  - Extracts and displays only lines starting with '* ' (org-mode headings)
+  - Human mode: Prints each heading on a separate line
+  - JSON mode: Returns headings array with count metadata
+
+### 10. ENVIRONMENT
 **Purpose**: Display configuration and validate setup
-**Syntax**: `para environment`
+**Syntax**: `para [--json] environment`
 **What it does**:
   - Shows PARA_HOME and PARA_ARCHIVE values (and whether they're defaults)
   - Checks if required directories exist
   - Provides mkdir commands for missing directories
+
+### 11. VERSION
+**Purpose**: Display Para version information
+**Syntax**: `para [--json] version`
+**Examples**:
+  - `para version` (human: shows version with description)
+  - `para --json version` (JSON: structured version data)
+**What it does**:
+  - Shows current Para version (0.1)
+  - Provides tool description and project URL
+  - JSON mode returns structured version metadata
 
 ## Tab Completion
 - All commands support tab completion for types (project/area)
@@ -737,16 +943,21 @@ $PARA_HOME/
 1. **Start new project**: `para create project newWebsite`
 2. **Work on project**: `para open project newWebsite`
 3. **View progress**: `para list project`
-4. **Complete project**: `para archive project newWebsite`
-5. **Browse files**: `para reveal project newWebsite`
-6. **Get path for scripts**: `para directory project newWebsite`
+4. **Read project journal**: `para read project newWebsite`
+5. **Check project structure**: `para headings project newWebsite`
+6. **Complete project**: `para archive project newWebsite`
+7. **Browse files**: `para reveal project newWebsite`
+8. **Get path for scripts**: `para directory project newWebsite`
 
 ### AI/Programmatic Workflows
-1. **Create and get data**: `para --json create project newWebsite`
-2. **List all items with metadata**: `para --json list`
-3. **Get environment status**: `para --json environment`
-4. **Get project path**: `para --json directory project newWebsite`
-5. **Archive with confirmation**: `para --json archive project newWebsite`
+1. **Check version**: `para --json version`
+2. **Create and get data**: `para --json create project newWebsite`
+3. **List all items with metadata**: `para --json list`
+4. **Read journal content**: `para --json read project newWebsite`
+5. **Extract headings/structure**: `para --json headings project newWebsite`
+6. **Get environment status**: `para --json environment`
+7. **Get project path**: `para --json directory project newWebsite`
+8. **Archive with confirmation**: `para --json archive project newWebsite`
 
 ## Integration Notes
 - Designed for Org-mode users (Emacs)
