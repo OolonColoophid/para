@@ -26,16 +26,74 @@ struct Para: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
-        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE",
+        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
         version: versionString,  // Dynamic version string
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Environment.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Environment.self, AIOverview.self]
     )
+    
+    @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
+    var json = false
+}
+
+// MARK: Global state for JSON mode
+struct ParaGlobals {
+    static var jsonMode = false
+}
+
+// MARK: JSON output helpers
+extension Para {
+    static func outputJSON<T: Codable>(_ data: T) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        if let jsonData = try? encoder.encode(data),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print(jsonString)
+        }
+    }
+    
+    static func outputJSONAny(_ data: [String: Any]) {
+        if let jsonData = try? JSONSerialization.data(withJSONObject: data, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print(jsonString)
+        }
+    }
+    
+    static func outputError(_ message: String, code: Int = 1) {
+        if ParaGlobals.jsonMode {
+            let error = ["error": ["message": message, "code": code]] as [String: Any]
+            if let jsonData = try? JSONSerialization.data(withJSONObject: error, options: .prettyPrinted),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                print(jsonString)
+            }
+        } else {
+            print("Error: \(message)")
+        }
+    }
+    
+    static func outputSuccess(_ message: String, data: [String: Any]? = nil) {
+        if ParaGlobals.jsonMode {
+            var response: [String: Any] = ["success": true, "message": message]
+            if let data = data {
+                response["data"] = data
+            }
+            if let jsonData = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                print(jsonString)
+            }
+        } else {
+            print(message)
+        }
+    }
 }
 
 // MARK: Make changes
 extension Para {
     enum FolderType: String, ExpressibleByArgument, Decodable {
         case project, area
+    }
+    
+    func run() throws {
+        ParaGlobals.jsonMode = json
     }
 
     struct Create: ParsableCommand {
@@ -56,17 +114,21 @@ extension Para {
         func run() throws {
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             Para.createFolder(at: folderPath)
-            Para.createFile(at: "\(folderPath)/.projectile", content: "")
 
             let journalContent = "#+TITLE: \(name.capitalized) \(type.rawValue.capitalized) Journal\n#+CATEGORY: \(name.capitalized)"
             Para.createFile(at: "\(folderPath)/journal.org", content: journalContent)
 
-            if verbose {
-                print("\(type.rawValue.capitalized) created successfully.")
-            }
+            let data: [String: Any] = [
+                "type": type.rawValue,
+                "name": name,
+                "path": folderPath,
+                "journalPath": "\(folderPath)/journal.org"
+            ]
+            
+            Para.outputSuccess("\(type.rawValue.capitalized) '\(name)' created successfully", data: data)
 
             // Open the .org file in the associated app if openOnCreate is true
-            if openOnCreate {
+            if openOnCreate && !ParaGlobals.jsonMode {
                 if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
                     NSWorkspace.shared.open(url)
                 }
@@ -117,7 +179,7 @@ extension Para {
                 } else if Para.folderExists(type: "area", name: name) {
                     archiveFolder(type: "area", name: name)
                 } else {
-                    print("Error: Could not find '\(name)' in either projects or areas.")
+                    Para.outputError("Could not find '\(name)' in either projects or areas")
                 }
             }
         }
@@ -129,9 +191,14 @@ extension Para {
 
             Para.moveToArchive(from: fromPath, to: toPath)
 
-            if verbose {
-                print("\(type.capitalized) moved to archive successfully.")
-            }
+            let data: [String: Any] = [
+                "type": type,
+                "name": name,
+                "fromPath": fromPath,
+                "toPath": toPath
+            ]
+            
+            Para.outputSuccess("\(type.capitalized) '\(name)' archived successfully", data: data)
         }
     }
 
@@ -175,7 +242,7 @@ extension Para {
                 } else if Para.folderExists(type: "area", name: name) {
                     deleteFolder(type: "area", name: name)
                 } else {
-                    print("Error: Could not find '\(name)' in either projects or areas.")
+                    Para.outputError("Could not find '\(name)' in either projects or areas")
                 }
             }
         }
@@ -185,11 +252,14 @@ extension Para {
             // Use expandedPath directly in the deleteDirectory call
             do {
                 try Para.deleteDirectory(at: folderPath)
-                if verbose {
-                    print("\(type.capitalized) deleted successfully.")
-                }
+                let data: [String: Any] = [
+                    "type": type,
+                    "name": name,
+                    "path": folderPath
+                ]
+                Para.outputSuccess("\(type.capitalized) '\(name)' deleted successfully", data: data)
             } catch let error {
-                print("Error: \(error.localizedDescription)")
+                Para.outputError(error.localizedDescription)
             }
         }
     }
@@ -204,6 +274,39 @@ extension Para {
         var type: FolderType?
 
         func run() {
+            if ParaGlobals.jsonMode {
+                outputJSONList()
+            } else {
+                outputHumanList()
+            }
+        }
+        
+        func outputJSONList() {
+            let types = type?.rawValue != nil ? [type!.rawValue] : ["project", "area"]
+            var result: [String: Any] = [:]
+            
+            for folderType in types {
+                let items = Para.completeFolders(type: folderType)
+                var itemsData: [[String: Any]] = []
+                
+                for item in items {
+                    let path = Para.getParaFolderPath(type: folderType, name: item)
+                    let description = Para.getItemDescription(type: folderType, name: item)
+                    let itemData: [String: Any] = [
+                        "name": item,
+                        "path": path,
+                        "description": description ?? ""
+                    ]
+                    itemsData.append(itemData)
+                }
+                
+                result["\(folderType)s"] = itemsData
+            }
+            
+            Para.outputJSONAny(result)
+        }
+        
+        func outputHumanList() {
             if let specifiedType = type {
                 // List only the specified type
                 listFoldersByType(specifiedType.rawValue)
@@ -220,8 +323,7 @@ extension Para {
             if items.isEmpty {
                 print("No \(type)s found.")
             } else {
-                let emoji = type == "project" ? "📁" : "🔄"
-                print("\(emoji) \(type.capitalized)s:")
+                print("\(type.capitalized)s:")
                 for item in items {
                     let description = Para.getItemDescription(type: type, name: item)
                     if let desc = description, !desc.isEmpty {
@@ -266,14 +368,24 @@ extension Para {
 
         func run() throws {
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let journalPath = "\(folderPath)/journal.org"
             
-            // Open the journal.org file
-            if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
-                NSWorkspace.shared.open(url)
-                if verbose {
-                    print("Opened journal.org for \(type.rawValue): \(name)")
+            // Open the journal.org file (only in human mode)
+            if !ParaGlobals.jsonMode {
+                if let url = URL(string: "file://" + journalPath) {
+                    NSWorkspace.shared.open(url)
                 }
             }
+            
+            let data: [String: Any] = [
+                "type": type.rawValue,
+                "name": name,
+                "path": folderPath,
+                "journalPath": journalPath,
+                "opened": !ParaGlobals.jsonMode
+            ]
+            
+            Para.outputSuccess("Opened journal.org for \(type.rawValue): \(name)", data: data)
         }
     }
     
@@ -316,12 +428,68 @@ extension Para {
         func revealFolder(type: String, name: String) {
             let folderPath = Para.getParaFolderPath(type: type, name: name)
             
-            // Open the folder in Finder
-            if let url = URL(string: "file://" + folderPath) {
-                NSWorkspace.shared.open(url)
-                if verbose {
-                    print("Opened folder for \(type): \(name)")
+            // Open the folder in Finder (only in human mode)
+            if !ParaGlobals.jsonMode {
+                if let url = URL(string: "file://" + folderPath) {
+                    NSWorkspace.shared.open(url)
                 }
+            }
+            
+            let data: [String: Any] = [
+                "type": type,
+                "name": name,
+                "path": folderPath,
+                "revealed": !ParaGlobals.jsonMode
+            ]
+            
+            Para.outputSuccess("Revealed folder for \(type): \(name)", data: data)
+        }
+    }
+    
+    struct Directory: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Return the directory path of a project or area"
+        )
+
+        @Argument(
+            help: "Type of folder (project or area)",
+            completion: CompletionKind.list(["project", "area"])
+        )
+        var type: FolderType
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _ in
+                if CommandLine.arguments.contains("project") {
+                    return Para.completeFolders(type: "project")
+                }
+                if CommandLine.arguments.contains("area") {
+                    return Para.completeFolders(type: "area")
+                }
+                return []
+            }
+        )
+        var name: String
+
+        func run() throws {
+            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            
+            // Check if the folder exists
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir) && isDir.boolValue else {
+                Para.outputError("\(type.rawValue.capitalized) '\(name)' does not exist")
+                return
+            }
+            
+            if ParaGlobals.jsonMode {
+                let data: [String: Any] = [
+                    "type": type.rawValue,
+                    "name": name,
+                    "path": folderPath
+                ]
+                Para.outputJSONAny(data)
+            } else {
+                print(folderPath)
             }
         }
     }
@@ -342,30 +510,250 @@ extension Para {
             let paraArchiveEnv = ProcessInfo.processInfo.environment["PARA_ARCHIVE"]
             let paraArchive = paraArchiveEnv ?? "\(homeDir)/Documents/archive"
             
-            print("Environment variables:")
-            print("  PARA_HOME = \(paraHome)\(paraHomeEnv == nil ? " (default)" : "")")
-            print("  PARA_ARCHIVE = \(paraArchive)\(paraArchiveEnv == nil ? " (default)" : "")")
-            
             // Check if directories exist
             var isDir: ObjCBool = false
             let homeExists = FileManager.default.fileExists(atPath: paraHome, isDirectory: &isDir) && isDir.boolValue
             let archiveExists = FileManager.default.fileExists(atPath: paraArchive, isDirectory: &isDir) && isDir.boolValue
             
-            print("\nDirectory status:")
-            print("  PARA_HOME directory: \(homeExists ? "✅ Exists" : "❌ Does not exist")")
-            print("  PARA_ARCHIVE directory: \(archiveExists ? "✅ Exists" : "❌ Does not exist")")
-            
-            if !homeExists || !archiveExists {
-                print("\nMissing directories can be created with:")
-                if !homeExists {
-                    print("  mkdir -p \"\(paraHome)\"")
-                    print("  mkdir -p \"\(paraHome)/projects\"")
-                    print("  mkdir -p \"\(paraHome)/areas\"")
-                }
-                if !archiveExists {
-                    print("  mkdir -p \"\(paraArchive)\"")
+            if ParaGlobals.jsonMode {
+                let data: [String: Any] = [
+                    "environment": [
+                        "PARA_HOME": [
+                            "value": paraHome,
+                            "isDefault": paraHomeEnv == nil,
+                            "exists": homeExists
+                        ],
+                        "PARA_ARCHIVE": [
+                            "value": paraArchive,
+                            "isDefault": paraArchiveEnv == nil,
+                            "exists": archiveExists
+                        ]
+                    ],
+                    "setup": [
+                        "allDirectoriesExist": homeExists && archiveExists,
+                        "missingDirectories": !homeExists || !archiveExists ? [
+                            homeExists ? nil : paraHome,
+                            archiveExists ? nil : paraArchive
+                        ].compactMap { $0 } : []
+                    ]
+                ]
+                Para.outputJSONAny(data)
+            } else {
+                print("Environment variables:")
+                print("  PARA_HOME = \(paraHome)\(paraHomeEnv == nil ? " (default)" : "")")
+                print("  PARA_ARCHIVE = \(paraArchive)\(paraArchiveEnv == nil ? " (default)" : "")")
+                
+                print("\nDirectory status:")
+                print("  PARA_HOME directory: \(homeExists ? "Exists" : "Does not exist")")
+                print("  PARA_ARCHIVE directory: \(archiveExists ? "Exists" : "Does not exist")")
+                
+                if !homeExists || !archiveExists {
+                    print("\nMissing directories can be created with:")
+                    if !homeExists {
+                        print("  mkdir -p \"\(paraHome)\"")
+                        print("  mkdir -p \"\(paraHome)/projects\"")
+                        print("  mkdir -p \"\(paraHome)/areas\"")
+                    }
+                    if !archiveExists {
+                        print("  mkdir -p \"\(paraArchive)\"")
+                    }
                 }
             }
+        }
+    }
+    
+    struct AIOverview: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "ai-overview",
+            abstract: "Comprehensive overview of Para for AI understanding"
+        )
+        
+        func run() {
+            print("""
+# Para CLI Tool - AI Overview
+
+## RECOMMENDED FOR AI USAGE
+**Always use the `--json` flag for machine-readable output:**
+```bash
+para --json list
+para --json create project example
+para --json environment
+```
+
+JSON mode provides structured data that's easier to parse programmatically, while human mode includes formatting designed for terminal display.
+
+## Purpose & Context
+Para is a command-line tool for managing a PARA (Projects, Areas, Resources, Archives) productivity system. 
+PARA is a methodology developed by Tiago Forte for organizing digital information and tasks.
+
+## Core Concepts
+- **Projects**: Specific outcomes with deadlines (e.g., "renovate kitchen", "launch website")
+- **Areas**: Ongoing responsibilities to maintain (e.g., "health", "finances", "team management")
+- **Resources**: Topics of ongoing interest (e.g., "web design", "productivity tips")
+- **Archives**: Inactive items from the other categories
+
+## File System Structure
+Para expects this directory structure:
+```
+$PARA_HOME/
+├── projects/
+│   ├── projectName1/
+│   │   └── journal.org
+│   └── projectName2/
+│       └── journal.org
+└── areas/
+    ├── areaName1/
+    │   └── journal.org
+    └── areaName2/
+        └── journal.org
+```
+
+## Environment Variables
+- **PARA_HOME**: Base directory (default: ~/Documents/PARA)
+- **PARA_ARCHIVE**: Archive location (default: ~/Documents/archive)
+
+## Output Modes
+
+### Human-Readable Mode (Default)
+- Includes formatted text for readability
+- Designed for terminal display and human consumption
+- Opens files/folders automatically when appropriate
+- Example: `para list` shows "Projects:" with indented formatting
+
+### JSON Mode (Recommended for AI/Programmatic Use)
+- Structured, machine-readable output
+- No visual formatting or colors
+- Consistent schema across all commands
+- Disables automatic file/folder opening for safety
+- Always returns valid JSON with success/error status
+- Example: `para --json list` returns structured data with paths and metadata
+
+**Key JSON advantages for AI:**
+- Predictable data structure
+- Full paths included in responses
+- Complete metadata (descriptions, timestamps, etc.)
+- Error handling with consistent format
+- No terminal-specific formatting to parse
+
+## Command Reference
+
+### 1. CREATE
+**Purpose**: Create new projects or areas with required files
+**Syntax**: `para [--json] create <type> <name> [--no-open-on-create] [--no-verbose]`
+**Examples**:
+  - `para create project roofBuild` (human-readable)
+  - `para --json create area guitar` (JSON output)
+**What it does**:
+  - Creates directory: $PARA_HOME/{type}s/{name}/
+  - Creates journal.org with title and category metadata
+  - Opens journal.org in default app (unless --no-open-on-create or JSON mode)
+
+### 2. ARCHIVE
+**Purpose**: Move completed projects/areas to archive location
+**Syntax**: `para archive [type] <name> [--no-verbose]`
+**Examples**:
+  - `para archive project roofBuild`
+  - `para archive guitar` (auto-detects type)
+**What it does**:
+  - Moves folder from $PARA_HOME/{type}s/{name} to $PARA_ARCHIVE/{name}
+  - If type omitted, searches both projects and areas
+  - Preserves all files and subdirectories
+
+### 3. DELETE
+**Purpose**: Permanently remove projects/areas
+**Syntax**: `para delete [type] <name> [--no-verbose]`
+**Examples**:
+  - `para delete project oldProject`
+  - `para delete someFolder` (auto-detects type)
+**What it does**:
+  - Permanently deletes the entire folder and contents
+  - If type omitted, searches both projects and areas
+  - No recovery mechanism - use carefully
+
+### 4. LIST
+**Purpose**: Display existing projects and/or areas
+**Syntax**: `para [--json] list [type]`
+**Examples**:
+  - `para list` (human: shows both projects and areas with formatting)
+  - `para --json list project` (JSON: structured data with paths and descriptions)
+  - `para --json list area`
+**What it does**:
+  - Human mode: Shows projects and areas with indented formatting, truncated descriptions
+  - JSON mode: Returns structured data with name, path, and full description for each item
+
+### 5. OPEN
+**Purpose**: Open journal.org file in default application
+**Syntax**: `para open <type> <name> [--no-verbose]`
+**Examples**:
+  - `para open project roofBuild`
+  - `para open area guitar`
+**What it does**:
+  - Opens {folder}/journal.org in system default app (usually text editor)
+  - Useful for quick access to project notes and metadata
+
+### 6. REVEAL
+**Purpose**: Open project/area folder in Finder (macOS only)
+**Syntax**: `para reveal <type> <name> [--no-verbose]`
+**Examples**:
+  - `para reveal project roofBuild`
+  - `para reveal area guitar`
+**What it does**:
+  - Opens the folder in macOS Finder specifically
+  - Allows browsing all files within the project/area
+  - macOS-specific command using NSWorkspace
+
+### 7. DIRECTORY
+**Purpose**: Return the absolute path to a project/area directory
+**Syntax**: `para directory <type> <name>`
+**Examples**:
+  - `para directory project roofBuild` → `/Users/user/Dropbox/para/projects/roofBuild`
+  - `para directory area guitar` → `/Users/user/Documents/PARA/areas/guitar`
+**What it does**:
+  - Outputs the full filesystem path
+  - Useful for scripting and automation
+  - Validates folder exists before returning path
+
+### 8. ENVIRONMENT
+**Purpose**: Display configuration and validate setup
+**Syntax**: `para environment`
+**What it does**:
+  - Shows PARA_HOME and PARA_ARCHIVE values (and whether they're defaults)
+  - Checks if required directories exist
+  - Provides mkdir commands for missing directories
+
+## Tab Completion
+- All commands support tab completion for types (project/area)
+- Folder name arguments complete from existing projects/areas
+- Archive/delete commands complete from available folders
+
+## File Conventions
+- **journal.org**: Main file with Org-mode format
+  - Contains #+TITLE: and #+CATEGORY: metadata
+  - Optional #+DESCRIPTION: for list display
+
+## Common Workflows
+
+### Human Workflows
+1. **Start new project**: `para create project newWebsite`
+2. **Work on project**: `para open project newWebsite`
+3. **View progress**: `para list project`
+4. **Complete project**: `para archive project newWebsite`
+5. **Browse files**: `para reveal project newWebsite`
+6. **Get path for scripts**: `para directory project newWebsite`
+
+### AI/Programmatic Workflows
+1. **Create and get data**: `para --json create project newWebsite`
+2. **List all items with metadata**: `para --json list`
+3. **Get environment status**: `para --json environment`
+4. **Get project path**: `para --json directory project newWebsite`
+5. **Archive with confirmation**: `para --json archive project newWebsite`
+
+## Integration Notes
+- Designed for Org-mode users (Emacs)
+- Reveal command is macOS-specific (uses NSWorkspace/Finder)
+- Environment commands help with setup validation
+- Directory command enables shell scripting integration
+""")
         }
     }
 }
@@ -397,11 +785,15 @@ extension Para {
         let filePath = "\(folderPath)/journal.org"
         
         do {
+            // Read file line by line, stopping early for efficiency
             let content = try String(contentsOfFile: filePath, encoding: .utf8)
             let lines = content.components(separatedBy: .newlines)
             
-            // Look for #+DESCRIPTION: line
-            for line in lines {
+            // Only check first 20 lines (descriptions should be at the top of org files)
+            let linesToCheck = min(20, lines.count)
+            
+            for i in 0..<linesToCheck {
+                let line = lines[i]
                 if line.hasPrefix("#+DESCRIPTION:") {
                     // Extract description text, removing the prefix and trimming whitespace
                     let descPrefix = "#+DESCRIPTION:"

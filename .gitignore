@@ -97,3 +97,4 @@ iOSInjectionProject/
 ### Objective-C Patch ###
 
 # End of https://www.toptal.com/developers/gitignore/api/objective-c,macos
+.aider*
