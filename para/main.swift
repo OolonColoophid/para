@@ -16,6 +16,38 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
+    static let buildNumber: String = {
+        // Try to get git commit count as build number, fallback to timestamp
+        let task = Process()
+        task.launchPath = "/usr/bin/git"
+        task.arguments = ["rev-list", "--count", "HEAD"]
+        task.currentDirectoryPath = FileManager.default.currentDirectoryPath
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe() // Suppress errors
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !output.isEmpty {
+                    return output
+                }
+            }
+        } catch {
+            // Git command failed, fallback to date-based build number
+        }
+        
+        // Fallback: use compilation date as build identifier
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: Date())
+    }()
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
@@ -92,6 +124,7 @@ extension Para {
             let data: [String: Any] = [
                 "name": "Para",
                 "version": Para.versionString,
+                "build": Para.buildNumber,
                 "description": "A utility for managing a local PARA organization system",
                 "usage": "Run 'para --help' for available commands",
                 "aiUsage": "Use 'para --json <command>' for machine-readable output",
@@ -99,7 +132,7 @@ extension Para {
             ]
             Para.outputJSONAny(data)
         } else {
-            print("Para v\(Para.versionString) - PARA Organization System Manager")
+            print("Para v\(Para.versionString) (build \(Para.buildNumber)) - PARA Organization System Manager")
             print("")
             print("Manage your Projects, Areas, Resources, and Archives from the command line.")
             print("")
@@ -740,12 +773,13 @@ extension Para {
             if ParaGlobals.jsonMode {
                 let data: [String: Any] = [
                     "version": Para.versionString,
+                    "build": Para.buildNumber,
                     "name": "Para",
                     "description": "A utility for managing a local PARA organization system"
                 ]
                 Para.outputJSONAny(data)
             } else {
-                print("Para version \(Para.versionString)")
+                print("Para version \(Para.versionString) (build \(Para.buildNumber))")
                 print("A utility for managing a local PARA organization system")
                 print("https://fortelabs.com/blog/para/")
             }
