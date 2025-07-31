@@ -15,23 +15,34 @@ Para is a command line tool designed to help you manage your personal productivi
 
 ## Installation
 
+### Automatic Installation (Recommended)
+
 1. Clone the repository:
 
 ```bash
 git clone https://github.com/OolonColoophid/para.git
-```
-
-2. Navigate to the project directory:
-
-```bash
 cd para
 ```
 
-3. Build and install:
+2. Run the install script:
 
 ```bash
-swift build -c release
-mv .build/release/para /usr/local/bin/
+./install.sh
+```
+
+The script will build Para in release mode and install it to `/usr/local/bin/para`. You may be prompted for administrator privileges.
+
+### Manual Installation
+
+If you prefer to install manually:
+
+```bash
+# Build for release
+xcodebuild -scheme para -configuration Release build
+
+# Find and copy the binary (path may vary)
+sudo cp [path-to-built-binary] /usr/local/bin/para
+sudo chmod +x /usr/local/bin/para
 ```
 
 ## Configuration
