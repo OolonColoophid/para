@@ -132,6 +132,7 @@ extension Para {
         @Argument(help: "Name of the folder") var name: String
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
         @Flag(inversion: .prefixedNo, help: "Opens the .org file after project or Area created.") var openOnCreate = true
+        @OptionGroup var globalOptions: Para
 
         func validate() throws {
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -140,6 +141,7 @@ extension Para {
         }
 
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             Para.createFolder(at: folderPath)
 
@@ -192,8 +194,10 @@ extension Para {
         var name: String
 
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
+        @OptionGroup var globalOptions: Para
 
         func run() {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderType: String
             
             if let specifiedType = type {
@@ -258,8 +262,10 @@ extension Para {
         var name: String
 
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
+        @OptionGroup var globalOptions: Para
 
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             if let specifiedType = type {
                 // Use the specified type
                 deleteFolder(type: specifiedType.rawValue, name: name)
@@ -300,8 +306,11 @@ extension Para {
             completion: CompletionKind.list(["project", "area"])
         )
         var type: FolderType?
+        
+        @OptionGroup var globalOptions: Para
 
         func run() {
+            ParaGlobals.jsonMode = globalOptions.json
             if ParaGlobals.jsonMode {
                 outputJSONList()
             } else {
@@ -393,8 +402,10 @@ extension Para {
         
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") 
         var verbose = false
+        @OptionGroup var globalOptions: Para
 
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
             
@@ -651,7 +662,10 @@ extension Para {
             abstract: "Display current environment settings for the PARA system"
         )
         
+        @OptionGroup var globalOptions: Para
+        
         func run() {
+            ParaGlobals.jsonMode = globalOptions.json
             let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
             
             // Get PARA_HOME value or use default
@@ -719,7 +733,10 @@ extension Para {
             abstract: "Display Para version information"
         )
         
+        @OptionGroup var globalOptions: Para
+        
         func run() {
+            ParaGlobals.jsonMode = globalOptions.json
             if ParaGlobals.jsonMode {
                 let data: [String: Any] = [
                     "version": Para.versionString,
