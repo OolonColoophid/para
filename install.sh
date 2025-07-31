@@ -18,9 +18,27 @@ if [ -d "$BUILD_DIR" ]; then
     rm -rf "$BUILD_DIR"
 fi
 
+# Get build number from git
+echo "   Determining build number..."
+BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d)
+echo "   Build number: $BUILD_NUMBER"
+
+# Replace build number placeholder in source code
+echo "   Injecting build number into source..."
+MAIN_SWIFT="$SCRIPT_DIR/para/main.swift"
+if [ -f "$MAIN_SWIFT" ]; then
+    # Create a temporary copy with build number injected
+    sed "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" "$MAIN_SWIFT" > "$MAIN_SWIFT.tmp"
+    mv "$MAIN_SWIFT.tmp" "$MAIN_SWIFT"
+fi
+
 # Build using Xcode in release configuration
 echo "   Building with Xcode..."
 xcodebuild -scheme para -configuration Release -derivedDataPath "$BUILD_DIR" build
+
+# Restore original source file
+echo "   Restoring source file..."
+git checkout "$MAIN_SWIFT" 2>/dev/null || true
 
 # Find the built binary
 BUILT_BINARY=$(find "$BUILD_DIR" -name "$BINARY_NAME" -type f -perm +111 | head -1)
