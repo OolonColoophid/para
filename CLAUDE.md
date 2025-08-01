@@ -13,12 +13,29 @@ Para is a command line tool for managing a PARA (Projects, Areas, Resources, Arc
 
 ## Building and Running
 
-To build and install Para:
+### Automated Installation (Recommended)
+
+The easiest way to build and install Para with proper code signing:
 
 ```bash
-swift build -c release
-mv .build/release/para /usr/local/bin/
+./install.sh
 ```
+
+This script will:
+- Build Para in release mode using Xcode
+- Code sign the binary with your Apple Developer certificate
+- Install it to `/usr/local/bin/`
+
+### Manual Build (Alternative)
+
+To build manually without the install script:
+
+```bash
+xcodebuild -scheme para -configuration Release build
+# The binary will be in .build/Release/para
+```
+
+**Note**: Manual builds require additional code signing steps to work on new macOS systems. The install script handles this automatically.
 
 ## Running Tests
 

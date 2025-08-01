@@ -16,48 +16,20 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = {
-        // Try to get git commit count as build number, fallback to timestamp
-        let task = Process()
-        task.launchPath = "/usr/bin/git"
-        task.arguments = ["rev-list", "--count", "HEAD"]
-        task.currentDirectoryPath = FileManager.default.currentDirectoryPath
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe() // Suppress errors
-        
-        do {
-            try task.run()
-            task.waitUntilExit()
-            
-            if task.terminationStatus == 0 {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !output.isEmpty {
-                    return output
-                }
-            }
-        } catch {
-            // Git command failed, fallback to date-based build number
-        }
-        
-        // Fallback: use compilation date as build identifier
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.string(from: Date())
-    }()
+    static let buildNumber: String = "PARA_BUILD_NUMBER"
+    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
 
     static let configuration = CommandConfiguration(
-        abstract: "A utility for managing a local PARA organization system. See [https://fortelabs.com/blog/para/]",
+        abstract: "A utility for managing a local PARA organization system.",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        version: versionString,  // Dynamic version string
         subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
     var json = false
+    
+    @Flag(help: "Show version information")
+    var version = false
 }
 
 // MARK: Global state for JSON mode
@@ -120,11 +92,31 @@ extension Para {
     func run() throws {
         ParaGlobals.jsonMode = json
         
+        // Handle custom version flag
+        if version {
+            if ParaGlobals.jsonMode {
+                let data: [String: Any] = [
+                    "version": Para.versionString,
+                    "build": Para.buildNumber,
+                    "buildTimestamp": Para.buildTimestamp,
+                    "name": "Para",
+                    "description": "A utility for managing a local PARA organization system"
+                ]
+                Para.outputJSONAny(data)
+            } else {
+                print("Para version \(Para.versionString) (build \(Para.buildNumber))")
+                print("Built: \(Para.buildTimestamp)")
+                print("A utility for managing a local PARA organization system")
+            }
+            return
+        }
+        
         if ParaGlobals.jsonMode {
             let data: [String: Any] = [
                 "name": "Para",
                 "version": Para.versionString,
                 "build": Para.buildNumber,
+                "buildTimestamp": Para.buildTimestamp,
                 "description": "A utility for managing a local PARA organization system",
                 "usage": "Run 'para --help' for available commands",
                 "aiUsage": "Use 'para --json <command>' for machine-readable output",
@@ -133,6 +125,7 @@ extension Para {
             Para.outputJSONAny(data)
         } else {
             print("Para v\(Para.versionString) (build \(Para.buildNumber)) - PARA Organization System Manager")
+            print("Built: \(Para.buildTimestamp)")
             print("")
             print("Manage your Projects, Areas, Resources, and Archives from the command line.")
             print("")
@@ -774,14 +767,15 @@ extension Para {
                 let data: [String: Any] = [
                     "version": Para.versionString,
                     "build": Para.buildNumber,
+                    "buildTimestamp": Para.buildTimestamp,
                     "name": "Para",
                     "description": "A utility for managing a local PARA organization system"
                 ]
                 Para.outputJSONAny(data)
             } else {
                 print("Para version \(Para.versionString) (build \(Para.buildNumber))")
+                print("Built: \(Para.buildTimestamp)")
                 print("A utility for managing a local PARA organization system")
-                print("https://fortelabs.com/blog/para/")
             }
         }
     }

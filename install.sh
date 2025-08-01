@@ -19,26 +19,29 @@ if [ -d "$BUILD_DIR" ]; then
 fi
 
 # Get build number from git
-echo "   Determining build number..."
+echo "   Determining build information..."
 BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d)
+BUILD_TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 echo "   Build number: $BUILD_NUMBER"
+echo "   Build timestamp: $BUILD_TIMESTAMP"
 
-# Replace build number placeholder in source code
-echo "   Injecting build number into source..."
+# Replace build placeholders in source code
+echo "   Injecting build information into source..."
 MAIN_SWIFT="$SCRIPT_DIR/para/main.swift"
 if [ -f "$MAIN_SWIFT" ]; then
-    # Create a temporary copy with build number injected
-    sed "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" "$MAIN_SWIFT" > "$MAIN_SWIFT.tmp"
+    # Backup original source file
+    cp "$MAIN_SWIFT" "$MAIN_SWIFT.backup"
+    
+    # Create a temporary copy with build info injected
+    sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
+        -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
+        "$MAIN_SWIFT" > "$MAIN_SWIFT.tmp"
     mv "$MAIN_SWIFT.tmp" "$MAIN_SWIFT"
 fi
 
 # Build using Xcode in release configuration
 echo "   Building with Xcode..."
 xcodebuild -scheme para -configuration Release -derivedDataPath "$BUILD_DIR" build
-
-# Restore original source file
-echo "   Restoring source file..."
-git checkout "$MAIN_SWIFT" 2>/dev/null || true
 
 # Find the built binary
 BUILT_BINARY=$(find "$BUILD_DIR" -name "$BINARY_NAME" -type f -perm +111 | head -1)
@@ -49,6 +52,46 @@ if [ -z "$BUILT_BINARY" ]; then
 fi
 
 echo "   Built binary found at: $BUILT_BINARY"
+
+# Code sign the binary for distribution
+echo "🔐 Code signing the binary..."
+
+# Try different signing identities in order of preference
+SIGNING_IDENTITIES=(
+    "Developer ID Application"
+    "Apple Development"
+    "-"  # Ad-hoc signing as fallback
+)
+
+SIGNED=false
+for identity in "${SIGNING_IDENTITIES[@]}"; do
+    echo "   Trying to sign with: $identity"
+    
+    if [[ "$identity" == "-" ]]; then
+        # Ad-hoc signing
+        if codesign --sign "$identity" --force "$BUILT_BINARY" 2>/dev/null; then
+            echo "   ✅ Ad-hoc code signature applied"
+            SIGNED=true
+            break
+        fi
+    else
+        # Try signing with the identity
+        if codesign --sign "$identity" --force --options runtime "$BUILT_BINARY" 2>/dev/null; then
+            if codesign --verify --verbose "$BUILT_BINARY" 2>/dev/null; then
+                echo "   ✅ Code signature verified with $identity"
+                SIGNED=true
+                break
+            fi
+        fi
+    fi
+done
+
+if [[ "$SIGNED" == false ]]; then
+    echo "   ⚠️  Could not sign binary with any available identity"
+    echo "   The binary may be blocked by Gatekeeper on other machines"
+    echo "   Consider running: xattr -d com.apple.quarantine /usr/local/bin/para"
+    echo "   after installation to remove quarantine attribute"
+fi
 
 # Check if we need sudo for installation
 if [ ! -w "$INSTALL_DIR" ]; then
@@ -64,6 +107,10 @@ $SUDO_CMD mkdir -p "$INSTALL_DIR"
 $SUDO_CMD cp "$BUILT_BINARY" "$INSTALL_DIR/$BINARY_NAME"
 $SUDO_CMD chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
+# Remove quarantine attribute to prevent Gatekeeper issues
+echo "🧹 Removing quarantine attributes..."
+$SUDO_CMD xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+
 # Verify installation
 if [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
     VERSION_OUTPUT=$("$INSTALL_DIR/$BINARY_NAME" version 2>/dev/null || echo "")
@@ -78,6 +125,7 @@ if [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
     else
         echo "⚠️  Installation completed but verification failed."
         echo "   Binary installed at: $INSTALL_DIR/$BINARY_NAME"
+        echo "   Try running manually: $INSTALL_DIR/$BINARY_NAME --help"
     fi
 else
     echo "❌ Installation failed - binary not found at $INSTALL_DIR/$BINARY_NAME"
@@ -87,5 +135,11 @@ fi
 # Clean up build directory
 echo "🧹 Cleaning up build files..."
 rm -rf "$BUILD_DIR"
+
+# Restore original source file
+echo "   Restoring original source file..."
+if [ -f "$MAIN_SWIFT.backup" ]; then
+    mv "$MAIN_SWIFT.backup" "$MAIN_SWIFT"
+fi
 
 echo "✨ Installation complete!"

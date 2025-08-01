@@ -3,7 +3,7 @@
 [![Swift](https://img.shields.io/badge/Swift-5.6-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Para is a command line tool designed to help you manage your personal productivity system based on the PARA (Projects, Areas, Resources, Archives) method. It works in an Emacs context, in that new files are created in [Org mode](https://orgmode.org) format. The PARA method, popularized by [Tiago Forte](https://fortelabs.com), is a framework for organizing your digital life and enhancing your productivity.
+Para is a command line tool designed to help you manage your personal productivity system based on the PARA (Projects, Areas, Resources, Archives) method. It works in an Emacs context, in that new files are created in [Org mode](https://orgmode.org) format. The PARA method is a framework for organizing your digital life and enhancing your productivity.
 
 ## Features
 
