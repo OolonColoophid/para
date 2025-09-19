@@ -1027,13 +1027,9 @@ extension String {
 // MARK: Helpers
 extension Para {
     static func getParaFolderPath(type: String, name: String) -> String {
-        if let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] {
-            return "\(paraHome)/\(type)s/\(name)"
-        } else {
-            // Fallback or error handling
-            print("Error: PARA_HOME is not set.")
-            return ""
-        }
+        let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] ??
+            NSString(string: "~/Documents/PARA").expandingTildeInPath
+        return "\(paraHome)/\(type)s/\(name)"
     }
     
     static func getItemDescription(type: String, name: String) -> String? {
