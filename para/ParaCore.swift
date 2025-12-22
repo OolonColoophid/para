@@ -20,7 +20,7 @@ struct Para: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -86,6 +86,21 @@ extension Para {
 extension Para {
     enum FolderType: String, ExpressibleByArgument, Decodable {
         case project, area
+    }
+
+    /// Extended path types that include special PARA locations
+    enum PathType: String, ExpressibleByArgument, CaseIterable {
+        case project, area, resources, archive, home
+
+        /// Returns true if this type requires a name argument
+        var requiresName: Bool {
+            switch self {
+            case .project, .area:
+                return true
+            case .resources, .archive, .home:
+                return false
+            }
+        }
     }
     
     func run() throws {
@@ -561,7 +576,104 @@ extension Para {
             }
         }
     }
-    
+
+    struct Path: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Return paths to PARA locations (project, area, resources, archive, home)",
+            discussion: """
+                Get the path to any PARA location for use with cd or other commands.
+
+                Examples:
+                  para path home                    # PARA_HOME directory
+                  para path resources               # Resources folder
+                  para path archive                 # Archive folder
+                  para path project myProject       # Specific project folder
+                  para path area myArea             # Specific area folder
+
+                Usage with cd:
+                  cd $(para path resources)
+                  cd $(para path project myProject)
+                """
+        )
+
+        @Argument(
+            help: "Type of path (project, area, resources, archive, home)",
+            completion: CompletionKind.list(["project", "area", "resources", "archive", "home"])
+        )
+        var type: PathType
+
+        @Argument(
+            help: "Name of the project or area (required for project/area types)",
+            completion: CompletionKind.custom { _ in
+                if CommandLine.arguments.contains("project") {
+                    return Para.completeFolders(type: "project")
+                }
+                if CommandLine.arguments.contains("area") {
+                    return Para.completeFolders(type: "area")
+                }
+                return []
+            }
+        )
+        var name: String?
+
+        @OptionGroup var globalOptions: Para
+
+        func validate() throws {
+            if type.requiresName && name == nil {
+                throw ValidationError("Name is required for \(type.rawValue) type")
+            }
+        }
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+            let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] ??
+                NSString(string: "~/Documents/PARA").expandingTildeInPath
+            let paraArchive = ProcessInfo.processInfo.environment["PARA_ARCHIVE"] ??
+                "\(homeDir)/Documents/archive"
+
+            let path: String
+            let pathType: String
+
+            switch type {
+            case .home:
+                path = paraHome
+                pathType = "home"
+            case .resources:
+                path = "\(paraHome)/resources"
+                pathType = "resources"
+            case .archive:
+                path = paraArchive
+                pathType = "archive"
+            case .project:
+                path = "\(paraHome)/projects/\(name!)"
+                pathType = "project"
+            case .area:
+                path = "\(paraHome)/areas/\(name!)"
+                pathType = "area"
+            }
+
+            // Check if the path exists
+            var isDir: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+
+            if ParaGlobals.jsonMode {
+                var data: [String: Any] = [
+                    "type": pathType,
+                    "path": path,
+                    "exists": exists
+                ]
+                if let name = name {
+                    data["name"] = name
+                }
+                Para.outputJSONAny(data)
+            } else {
+                // Human mode: just output the path (easy to use with cd)
+                print(path)
+            }
+        }
+    }
+
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Read the entire journal.org file of a project or area"
