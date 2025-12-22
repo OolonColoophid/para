@@ -165,7 +165,10 @@ extension Para {
     }
 
     struct Create: ParsableCommand {
-        static var configuration = CommandConfiguration(abstract: "Create a new project or area. Org category in-file metadata will be set based on the name")
+        static var configuration = CommandConfiguration(
+            abstract: "Create a new project or area",
+            usage: "para create <project|area> <name>"
+        )
         @Argument(help: "Type of folder to create (project or area)",
                   completion: CompletionKind.list(["project", "area"]))
         var type: FolderType // Changed to Enum
@@ -207,7 +210,10 @@ extension Para {
     }
 
     struct Archive: ParsableCommand {
-        static var configuration = CommandConfiguration(abstract: "Archive an existing project or area. If type is not specified, the command will attempt to find the folder in either projects or areas.")
+        static var configuration = CommandConfiguration(
+            abstract: "Archive a project or area (type auto-detected if omitted)",
+            usage: "para archive [project|area] <name>"
+        )
 
         @Argument(
             help: "Type of folder to archive (project or area)",
@@ -279,7 +285,10 @@ extension Para {
     }
 
     struct Delete: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Delete a project or area. If type is not specified, the command will attempt to find the folder in either projects or areas.")
+        static let configuration = CommandConfiguration(
+            abstract: "Delete a project or area (type auto-detected if omitted)",
+            usage: "para delete [project|area] <name>"
+        )
 
         @Argument(
             help: "Type of folder to delete (project or area)",
@@ -343,7 +352,10 @@ extension Para {
     }
 
     struct List: ParsableCommand {
-        static var configuration = CommandConfiguration(abstract: "List existing Projects or Areas. If no type is specified, lists both.")
+        static var configuration = CommandConfiguration(
+            abstract: "List projects and/or areas",
+            usage: "para list [project|area]"
+        )
 
         @Argument(
             help: "Type of folder to list (project or area)",
@@ -421,7 +433,8 @@ extension Para {
 
     struct Open: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Open a project or area's journal.org file"
+            abstract: "Open a project or area's journal.org file",
+            usage: "para open <project|area> <name>"
         )
 
         @Argument(
@@ -474,7 +487,8 @@ extension Para {
     
     struct Reveal: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Open a project or area's folder in Finder"
+            abstract: "Open a project or area's folder in Finder",
+            usage: "para reveal <project|area> <name>"
         )
 
         @Argument(
@@ -531,7 +545,8 @@ extension Para {
     
     struct Directory: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Return the directory path of a project or area"
+            abstract: "Return the directory path of a project or area",
+            usage: "para directory <project|area> <name>"
         )
 
         @Argument(
@@ -676,7 +691,8 @@ extension Para {
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Read the entire journal.org file of a project or area"
+            abstract: "Read the entire journal.org file of a project or area",
+            usage: "para read <project|area> <name>"
         )
 
         @Argument(
@@ -732,7 +748,8 @@ extension Para {
     
     struct Headings: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Read only the org-mode headings from a project or area's journal"
+            abstract: "Read only the org-mode headings from a project or area's journal",
+            usage: "para headings <project|area> <name>"
         )
 
         @Argument(
