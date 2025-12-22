@@ -27,16 +27,16 @@ echo "   Build timestamp: $BUILD_TIMESTAMP"
 
 # Replace build placeholders in source code
 echo "   Injecting build information into source..."
-MAIN_SWIFT="$SCRIPT_DIR/para/main.swift"
-if [ -f "$MAIN_SWIFT" ]; then
+CORE_SWIFT="$SCRIPT_DIR/para/ParaCore.swift"
+if [ -f "$CORE_SWIFT" ]; then
     # Backup original source file
-    cp "$MAIN_SWIFT" "$MAIN_SWIFT.backup"
-    
+    cp "$CORE_SWIFT" "$CORE_SWIFT.backup"
+
     # Create a temporary copy with build info injected
     sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
         -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
-        "$MAIN_SWIFT" > "$MAIN_SWIFT.tmp"
-    mv "$MAIN_SWIFT.tmp" "$MAIN_SWIFT"
+        "$CORE_SWIFT" > "$CORE_SWIFT.tmp"
+    mv "$CORE_SWIFT.tmp" "$CORE_SWIFT"
 fi
 
 # Build using Xcode in release configuration
@@ -138,8 +138,8 @@ rm -rf "$BUILD_DIR"
 
 # Restore original source file
 echo "   Restoring original source file..."
-if [ -f "$MAIN_SWIFT.backup" ]; then
-    mv "$MAIN_SWIFT.backup" "$MAIN_SWIFT"
+if [ -f "$CORE_SWIFT.backup" ]; then
+    mv "$CORE_SWIFT.backup" "$CORE_SWIFT"
 fi
 
 echo "✨ Installation complete!"
