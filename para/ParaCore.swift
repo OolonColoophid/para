@@ -166,7 +166,7 @@ extension Para {
 
     struct Create: ParsableCommand {
         static var configuration = CommandConfiguration(
-            abstract: "Create a new project or area",
+            abstract: "<project|area> <name> — Create a new project or area",
             usage: "para create <project|area> <name>"
         )
         @Argument(help: "Type of folder to create (project or area)",
@@ -211,7 +211,7 @@ extension Para {
 
     struct Archive: ParsableCommand {
         static var configuration = CommandConfiguration(
-            abstract: "Archive a project or area (type auto-detected if omitted)",
+            abstract: "[project|area] <name> — Archive a project or area",
             usage: "para archive [project|area] <name>"
         )
 
@@ -286,7 +286,7 @@ extension Para {
 
     struct Delete: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Delete a project or area (type auto-detected if omitted)",
+            abstract: "[project|area] <name> — Delete a project or area",
             usage: "para delete [project|area] <name>"
         )
 
@@ -353,7 +353,7 @@ extension Para {
 
     struct List: ParsableCommand {
         static var configuration = CommandConfiguration(
-            abstract: "List projects and/or areas",
+            abstract: "[project|area] — List projects and/or areas",
             usage: "para list [project|area]"
         )
 
@@ -433,7 +433,7 @@ extension Para {
 
     struct Open: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Open a project or area's journal.org file",
+            abstract: "<project|area> <name> — Open journal.org file",
             usage: "para open <project|area> <name>"
         )
 
@@ -446,18 +446,21 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _ in
+                var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    return Para.completeFolders(type: "project")
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                } else {
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
                 }
-                if CommandLine.arguments.contains("area") {
-                    return Para.completeFolders(type: "area")
-                }
-                return []
+                return items
             }
         )
         var name: String
-        
-        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") 
+
+        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.")
         var verbose = false
         @OptionGroup var globalOptions: Para
 
@@ -465,14 +468,14 @@ extension Para {
             ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
-            
+
             // Open the journal.org file (only in human mode)
             if !ParaGlobals.jsonMode {
                 if let url = URL(string: "file://" + journalPath) {
                     NSWorkspace.shared.open(url)
                 }
             }
-            
+
             let data: [String: Any] = [
                 "type": type.rawValue,
                 "name": name,
@@ -480,14 +483,14 @@ extension Para {
                 "journalPath": journalPath,
                 "opened": !ParaGlobals.jsonMode
             ]
-            
+
             Para.outputSuccess("Opened journal.org for \(type.rawValue): \(name)", data: data)
         }
     }
-    
+
     struct Reveal: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Open a project or area's folder in Finder",
+            abstract: "<project|area> <name> — Open folder in Finder",
             usage: "para reveal <project|area> <name>"
         )
 
@@ -545,7 +548,7 @@ extension Para {
     
     struct Directory: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Return the directory path of a project or area",
+            abstract: "<project|area> <name> — Return directory path",
             usage: "para directory <project|area> <name>"
         )
 
@@ -558,20 +561,23 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _ in
+                var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    return Para.completeFolders(type: "project")
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                } else {
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
                 }
-                if CommandLine.arguments.contains("area") {
-                    return Para.completeFolders(type: "area")
-                }
-                return []
+                return items
             }
         )
         var name: String
 
         func run() throws {
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
-            
+
             // Check if the folder exists
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir) && isDir.boolValue else {
@@ -594,7 +600,7 @@ extension Para {
 
     struct Path: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Return paths to PARA locations (project, area, resources, archive, home)",
+            abstract: "<home|resources|archive|project|area> [name] — Get PARA path",
             discussion: """
                 Get the path to any PARA location for use with cd or other commands.
 
@@ -691,7 +697,7 @@ extension Para {
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Read the entire journal.org file of a project or area",
+            abstract: "<project|area> <name> — Read journal.org file",
             usage: "para read <project|area> <name>"
         )
 
@@ -704,13 +710,16 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _ in
+                var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    return Para.completeFolders(type: "project")
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                } else {
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
                 }
-                if CommandLine.arguments.contains("area") {
-                    return Para.completeFolders(type: "area")
-                }
-                return []
+                return items
             }
         )
         var name: String
@@ -718,7 +727,7 @@ extension Para {
         func run() throws {
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
-            
+
             // Check if the file exists
             guard FileManager.default.fileExists(atPath: journalPath) else {
                 Para.outputError("Journal file not found for \(type.rawValue) '\(name)'")
@@ -748,7 +757,7 @@ extension Para {
     
     struct Headings: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Read only the org-mode headings from a project or area's journal",
+            abstract: "<project|area> <name> — Show org-mode headings",
             usage: "para headings <project|area> <name>"
         )
 
@@ -761,13 +770,16 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _ in
+                var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    return Para.completeFolders(type: "project")
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                } else {
+                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: Para.completeFolders(type: "area"))
                 }
-                if CommandLine.arguments.contains("area") {
-                    return Para.completeFolders(type: "area")
-                }
-                return []
+                return items
             }
         )
         var name: String
