@@ -7,6 +7,7 @@
 
 import Foundation
 import ArgumentParser
+import ParaKit
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -14,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "PARA_BUILD_NUMBER"
-    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
+    static let buildNumber: String = "32"
+    static let buildTimestamp: String = "2025-12-23 23:05:56 UTC"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
@@ -185,11 +186,11 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
-            Para.createFolder(at: folderPath)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            try ParaFileSystem.createFolder(at: folderPath)
 
             let journalContent = "#+TITLE: \(name.capitalized) \(type.rawValue.capitalized) Journal\n#+CATEGORY: \(name.capitalized)"
-            Para.createFile(at: "\(folderPath)/journal.org", content: journalContent)
+            try ParaFileSystem.createFile(at: "\(folderPath)/journal.org", content: journalContent)
 
             let data: [String: Any] = [
                 "type": type.rawValue,
@@ -225,13 +226,13 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
                     // If no type is specified, show both
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -251,9 +252,9 @@ extension Para {
                 archiveFolder(type: folderType, name: name)
             } else {
                 // Try to find the folder in either projects or areas
-                if Para.folderExists(type: "project", name: name) {
+                if ParaFileSystem.folderExists(type: "project", name: name) {
                     archiveFolder(type: "project", name: name)
-                } else if Para.folderExists(type: "area", name: name) {
+                } else if ParaFileSystem.folderExists(type: "area", name: name) {
                     archiveFolder(type: "area", name: name)
                 } else {
                     Para.outputError("Could not find '\(name)' in either projects or areas")
@@ -262,12 +263,12 @@ extension Para {
         }
         
         func archiveFolder(type: String, name: String) {
-            let fromPath: String = Para.getParaFolderPath(type: type, name: name)
+            let fromPath: String = ParaFileSystem.getParaFolderPath(type: type, name: name)
             let homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
-            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Documents/archive/\(name)"
+            let toPath: String = ParaFileSystem.getArchiveFolderPath(name: name) ?? "\(homeDir)/Documents/archive/\(name)"
 
             do {
-                try Para.moveToArchive(from: fromPath, to: toPath)
+                try ParaFileSystem.moveToArchive(from: fromPath, to: toPath)
 
                 let data: [String: Any] = [
                     "type": type,
@@ -300,13 +301,13 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
                     // If no type is specified, show both
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -323,9 +324,9 @@ extension Para {
                 deleteFolder(type: specifiedType.rawValue, name: name)
             } else {
                 // Try to find the folder in either projects or areas
-                if Para.folderExists(type: "project", name: name) {
+                if ParaFileSystem.folderExists(type: "project", name: name) {
                     deleteFolder(type: "project", name: name)
-                } else if Para.folderExists(type: "area", name: name) {
+                } else if ParaFileSystem.folderExists(type: "area", name: name) {
                     deleteFolder(type: "area", name: name)
                 } else {
                     Para.outputError("Could not find '\(name)' in either projects or areas")
@@ -334,10 +335,10 @@ extension Para {
         }
         
         func deleteFolder(type: String, name: String) {
-            let folderPath = Para.getParaFolderPath(type: type, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type, name: name)
             // Use expandedPath directly in the deleteDirectory call
             do {
-                try Para.deleteDirectory(at: folderPath)
+                try ParaFileSystem.deleteDirectory(at: folderPath)
                 let data: [String: Any] = [
                     "type": type,
                     "name": name,
@@ -378,12 +379,12 @@ extension Para {
             var result: [String: Any] = [:]
             
             for folderType in types {
-                let items = Para.completeFolders(type: folderType)
+                let items = ParaFileSystem.completeFolders(type: folderType)
                 var itemsData: [[String: Any]] = []
-                
+
                 for item in items {
-                    let path = Para.getParaFolderPath(type: folderType, name: item)
-                    let description = Para.getItemDescription(type: folderType, name: item)
+                    let path = ParaFileSystem.getParaFolderPath(type: folderType, name: item)
+                    let description = ParaFileSystem.getItemDescription(type: folderType, name: item)
                     let itemData: [String: Any] = [
                         "name": item,
                         "path": path,
@@ -411,13 +412,13 @@ extension Para {
         }
         
         func listFoldersByType(_ type: String) {
-            let items = Para.completeFolders(type: type)
+            let items = ParaFileSystem.completeFolders(type: type)
             if items.isEmpty {
                 print("No \(type)s found.")
             } else {
                 print("\(type.capitalized)s:")
                 for item in items {
-                    let description = Para.getItemDescription(type: type, name: item)
+                    let description = ParaFileSystem.getItemDescription(type: type, name: item)
                     if let desc = description, !desc.isEmpty {
                         // Print with description (truncate if longer than 80 chars)
                         let truncatedDesc = desc.count > 80 ? desc.prefix(77) + "..." : desc
@@ -447,12 +448,12 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -465,7 +466,7 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
 
             // Open the journal.org file (only in human mode)
@@ -503,13 +504,13 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
                     // If no type is specified, show both
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -527,7 +528,7 @@ extension Para {
 
         func revealFolder(type: String, name: String) {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type, name: name)
 
             // Open the folder in Finder (only in human mode)
             if !ParaGlobals.jsonMode {
@@ -563,12 +564,12 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -579,7 +580,7 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
 
             // Check if the folder exists
             var isDir: ObjCBool = false
@@ -630,10 +631,10 @@ extension Para {
             help: "Name of the project or area (required for project/area types)",
             completion: CompletionKind.custom { _ in
                 if CommandLine.arguments.contains("project") {
-                    return Para.completeFolders(type: "project")
+                    return ParaFileSystem.completeFolders(type: "project")
                 }
                 if CommandLine.arguments.contains("area") {
-                    return Para.completeFolders(type: "area")
+                    return ParaFileSystem.completeFolders(type: "area")
                 }
                 return []
             }
@@ -650,11 +651,8 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-            let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] ??
-                NSString(string: "~/Documents/PARA").expandingTildeInPath
-            let paraArchive = ProcessInfo.processInfo.environment["PARA_ARCHIVE"] ??
-                "\(homeDir)/Documents/archive"
+            let paraHome = ParaEnvironment.paraHome
+            let paraArchive = ParaEnvironment.paraArchive
 
             let path: String
             let pathType: String
@@ -715,12 +713,12 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -731,7 +729,7 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
 
             // Check if the file exists
@@ -778,12 +776,12 @@ extension Para {
             completion: CompletionKind.custom { _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 } else {
-                    items.append(contentsOf: Para.completeFolders(type: "project"))
-                    items.append(contentsOf: Para.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
                 }
                 return items
             }
@@ -794,7 +792,7 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
             
             // Check if the file exists
@@ -845,15 +843,10 @@ extension Para {
         
         func run() {
             ParaGlobals.jsonMode = globalOptions.json
-            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-            
-            // Get PARA_HOME value or use default
+            let paraHome = ParaEnvironment.paraHome
+            let paraArchive = ParaEnvironment.paraArchive
             let paraHomeEnv = ProcessInfo.processInfo.environment["PARA_HOME"]
-            let paraHome = paraHomeEnv ?? "\(homeDir)/Documents/PARA"
-            
-            // Get PARA_ARCHIVE value or use default
             let paraArchiveEnv = ProcessInfo.processInfo.environment["PARA_ARCHIVE"]
-            let paraArchive = paraArchiveEnv ?? "\(homeDir)/Documents/archive"
             
             // Check if directories exist
             var isDir: ObjCBool = false
@@ -1177,135 +1170,4 @@ extension String {
     }
 }
 
-// MARK: Helpers
-extension Para {
-    static func getParaFolderPath(type: String, name: String) -> String {
-        let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] ??
-            NSString(string: "~/Documents/PARA").expandingTildeInPath
-        return "\(paraHome)/\(type)s/\(name)"
-    }
-    
-    static func getItemDescription(type: String, name: String) -> String? {
-        let folderPath = getParaFolderPath(type: type, name: name)
-        let filePath = "\(folderPath)/journal.org"
-        
-        do {
-            // Read file line by line, stopping early for efficiency
-            let content = try String(contentsOfFile: filePath, encoding: .utf8)
-            let lines = content.components(separatedBy: .newlines)
-            
-            // Only check first 20 lines (descriptions should be at the top of org files)
-            let linesToCheck = min(20, lines.count)
-            
-            for i in 0..<linesToCheck {
-                let line = lines[i]
-                if line.hasPrefix("#+DESCRIPTION:") {
-                    // Extract description text, removing the prefix and trimming whitespace
-                    let descPrefix = "#+DESCRIPTION:"
-                    let startIndex = line.index(line.startIndex, offsetBy: descPrefix.count)
-                    return String(line[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            
-            return nil // No description found
-        } catch {
-            return nil // Error reading file
-        }
-    }
-
-    static func getArchiveFolderPath(name: String) -> String? {
-        if let archiveFoler = ProcessInfo.processInfo.environment["PARA_ARCHIVE"] {
-            return "\(archiveFoler)/\(name)"
-        } else {
-            return nil
-        }
-    }
-
-    static func createFolder(at path: String) {
-        do {
-            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            print("Error creating folder: \(error)")
-        }
-    }
-
-    static func createFile(at path: String, content: String) {
-        do {
-            try content.write(toFile: path, atomically: true, encoding: .utf8)
-        } catch {
-            print("Error creating file: \(error)")
-        }
-    }
-
-    static func moveToArchive(from: String, to: String) throws {
-        let fileManager = FileManager.default
-        let expandedFrom = (from as NSString).expandingTildeInPath
-        let expandedTo = (to as NSString).expandingTildeInPath
-
-        // Ensure source exists before attempting to move
-        guard fileManager.fileExists(atPath: expandedFrom) else {
-            throw NSError(
-                domain: "com.para",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Source path not found at \(expandedFrom)"]
-            )
-        }
-
-        // Ensure destination parent directory exists
-        let destinationDir = (expandedTo as NSString).deletingLastPathComponent
-        try fileManager.createDirectory(atPath: destinationDir, withIntermediateDirectories: true, attributes: nil)
-
-        // Prevent silent overwrite if destination already exists
-        guard !fileManager.fileExists(atPath: expandedTo) else {
-            throw NSError(
-                domain: "com.para",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Destination already exists at \(expandedTo)"]
-            )
-        }
-
-        try fileManager.moveItem(atPath: expandedFrom, toPath: expandedTo)
-    }
-
-    static func deleteDirectory(at path: String) throws {
-        let expandedPath = (path as NSString).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expandedPath) {
-            try FileManager.default.removeItem(atPath: expandedPath)
-        } else {
-            throw NSError(domain: "com.para", code: 1, userInfo: [NSLocalizedDescriptionKey: "Directory does not exist"])
-        }
-    }
-
-    static func completeFolders(type: String) -> [String] {
-        guard let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] else {
-            return []
-        }
-
-        let path = "\(paraHome)/\(type)s"
-
-        do {
-            let items = try FileManager.default.contentsOfDirectory(atPath: path)
-            return items.filter { itemName in
-                var isDir: ObjCBool = false
-                let fullPath = "\(path)/\(itemName)"
-                FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDir)
-                return isDir.boolValue
-            }
-        } catch {
-            return []
-        }
-    }
-    
-    static func folderExists(type: String, name: String) -> Bool {
-        guard let paraHome = ProcessInfo.processInfo.environment["PARA_HOME"] else {
-            return false
-        }
-        
-        let path = "\(paraHome)/\(type)s/\(name)"
-        var isDir: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
-        
-        return exists && isDir.boolValue
-    }
-}
 // Entry point is defined in para/main.swift so tests can import this module.

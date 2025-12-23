@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Para CLI Installation Script
-# Builds Para in release mode and installs to /usr/local/bin
+# Para Installation Script
+# Builds Para CLI and Menu Bar App in release mode
 
 set -e  # Exit on any error
 
@@ -9,8 +9,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/.build"
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="para"
+APP_NAME="Para"
+APP_BUNDLE="$APP_NAME.app"
 
-echo "🔨 Building Para CLI for release..."
+echo "🔨 Building Para CLI and Menu Bar App..."
 
 # Clean any previous builds
 if [ -d "$BUILD_DIR" ]; then
@@ -39,22 +41,71 @@ if [ -f "$CORE_SWIFT" ]; then
     mv "$CORE_SWIFT.tmp" "$CORE_SWIFT"
 fi
 
-# Build using Xcode in release configuration
-echo "   Building with Xcode..."
-xcodebuild -scheme para -configuration Release -derivedDataPath "$BUILD_DIR" build
+# Build using Swift Package Manager
+echo "   Building CLI with Swift Package Manager..."
+swift build -c release --product para
 
-# Find the built binary
-BUILT_BINARY=$(find "$BUILD_DIR" -name "$BINARY_NAME" -type f -perm +111 | head -1)
+# Build Menu Bar App
+echo "   Building Menu Bar App..."
+swift build -c release --product ParaMenuBar
 
-if [ -z "$BUILT_BINARY" ]; then
-    echo "❌ Error: Could not find built binary"
+# Find the built binaries (SPM uses architecture-specific directories)
+CLI_BINARY=$(find "$BUILD_DIR" -name "para" -type f | grep "/release/para$" | grep -v "\.dSYM" | head -1)
+MENUBAR_BINARY=$(find "$BUILD_DIR" -name "ParaMenuBar" -type f | grep "/release/ParaMenuBar$" | grep -v "\.dSYM" | head -1)
+
+if [ ! -f "$CLI_BINARY" ]; then
+    echo "❌ Error: Could not find CLI binary at $CLI_BINARY"
     exit 1
 fi
 
-echo "   Built binary found at: $BUILT_BINARY"
+if [ ! -f "$MENUBAR_BINARY" ]; then
+    echo "❌ Error: Could not find Menu Bar binary at $MENUBAR_BINARY"
+    exit 1
+fi
 
-# Code sign the binary for distribution
-echo "🔐 Code signing the binary..."
+echo "   CLI binary found at: $CLI_BINARY"
+echo "   Menu Bar binary found at: $MENUBAR_BINARY"
+
+# Create .app bundle for Menu Bar App
+echo "   Creating .app bundle..."
+APP_DIR="$BUILD_DIR/$APP_BUNDLE"
+rm -rf "$APP_DIR"
+mkdir -p "$APP_DIR/Contents/MacOS"
+mkdir -p "$APP_DIR/Contents/Resources"
+
+cp "$MENUBAR_BINARY" "$APP_DIR/Contents/MacOS/$APP_NAME"
+chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
+
+# Create Info.plist
+cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Para</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.para.menubar</string>
+	<key>CFBundleName</key>
+	<string>Para</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>
+PLIST_EOF
+
+# Code sign the binaries for distribution
+echo "🔐 Code signing binaries..."
 
 # Try different signing identities in order of preference
 SIGNING_IDENTITIES=(
@@ -66,18 +117,21 @@ SIGNING_IDENTITIES=(
 SIGNED=false
 for identity in "${SIGNING_IDENTITIES[@]}"; do
     echo "   Trying to sign with: $identity"
-    
+
     if [[ "$identity" == "-" ]]; then
         # Ad-hoc signing
-        if codesign --sign "$identity" --force "$BUILT_BINARY" 2>/dev/null; then
-            echo "   ✅ Ad-hoc code signature applied"
+        if codesign --sign "$identity" --force "$CLI_BINARY" 2>/dev/null && \
+           codesign --sign "$identity" --force --deep "$APP_DIR" 2>/dev/null; then
+            echo "   ✅ Ad-hoc code signature applied to both binaries"
             SIGNED=true
             break
         fi
     else
         # Try signing with the identity
-        if codesign --sign "$identity" --force --options runtime "$BUILT_BINARY" 2>/dev/null; then
-            if codesign --verify --verbose "$BUILT_BINARY" 2>/dev/null; then
+        if codesign --sign "$identity" --force --options runtime "$CLI_BINARY" 2>/dev/null && \
+           codesign --sign "$identity" --force --deep --options runtime "$APP_DIR" 2>/dev/null; then
+            if codesign --verify --verbose "$CLI_BINARY" 2>/dev/null && \
+               codesign --verify --verbose "$APP_DIR" 2>/dev/null; then
                 echo "   ✅ Code signature verified with $identity"
                 SIGNED=true
                 break
@@ -87,10 +141,11 @@ for identity in "${SIGNING_IDENTITIES[@]}"; do
 done
 
 if [[ "$SIGNED" == false ]]; then
-    echo "   ⚠️  Could not sign binary with any available identity"
-    echo "   The binary may be blocked by Gatekeeper on other machines"
+    echo "   ⚠️  Could not sign binaries with any available identity"
+    echo "   The binaries may be blocked by Gatekeeper on other machines"
     echo "   Consider running: xattr -d com.apple.quarantine /usr/local/bin/para"
-    echo "   after installation to remove quarantine attribute"
+    echo "   and: xattr -d com.apple.quarantine \"/Applications/$APP_BUNDLE\""
+    echo "   after installation to remove quarantine attributes"
 fi
 
 # Check if we need sudo for installation
@@ -101,34 +156,51 @@ else
     SUDO_CMD=""
 fi
 
-# Install the binary
+# Install the CLI binary
 echo "📦 Installing Para CLI..."
 $SUDO_CMD mkdir -p "$INSTALL_DIR"
-$SUDO_CMD cp "$BUILT_BINARY" "$INSTALL_DIR/$BINARY_NAME"
+$SUDO_CMD cp "$CLI_BINARY" "$INSTALL_DIR/$BINARY_NAME"
 $SUDO_CMD chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
-# Remove quarantine attribute to prevent Gatekeeper issues
+# Install the Menu Bar App
+echo "📦 Installing Para Menu Bar App..."
+$SUDO_CMD cp -R "$APP_DIR" "/Applications/"
+
+# Remove quarantine attributes to prevent Gatekeeper issues
 echo "🧹 Removing quarantine attributes..."
 $SUDO_CMD xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+$SUDO_CMD xattr -dr com.apple.quarantine "/Applications/$APP_BUNDLE" 2>/dev/null || true
 
 # Verify installation
-if [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
+if [ -x "$INSTALL_DIR/$BINARY_NAME" ] && [ -d "/Applications/$APP_BUNDLE" ]; then
     VERSION_OUTPUT=$("$INSTALL_DIR/$BINARY_NAME" version 2>/dev/null || echo "")
     if [[ "$VERSION_OUTPUT" == *"Para version"* ]]; then
         echo "✅ Para CLI successfully installed!"
         echo "   Location: $INSTALL_DIR/$BINARY_NAME"
         echo "   Version: $("$INSTALL_DIR/$BINARY_NAME" version | head -1)"
         echo ""
-        echo "🚀 You can now use 'para' from anywhere in your terminal."
-        echo "   Try: para --help"
-        echo "   Setup: para environment"
+        echo "✅ Para Menu Bar App successfully installed!"
+        echo "   Location: /Applications/$APP_BUNDLE"
+        echo ""
+        echo "🚀 You can now:"
+        echo "   • Use 'para' from anywhere in your terminal (para --help)"
+        echo "   • Launch the menu bar app: open \"/Applications/$APP_BUNDLE\""
+        echo "   • Add Para to login items for automatic startup"
+        echo ""
+        echo "📝 Setup: para environment"
     else
         echo "⚠️  Installation completed but verification failed."
-        echo "   Binary installed at: $INSTALL_DIR/$BINARY_NAME"
+        echo "   CLI installed at: $INSTALL_DIR/$BINARY_NAME"
+        echo "   Menu Bar App installed at: /Applications/$APP_BUNDLE"
         echo "   Try running manually: $INSTALL_DIR/$BINARY_NAME --help"
     fi
 else
-    echo "❌ Installation failed - binary not found at $INSTALL_DIR/$BINARY_NAME"
+    if [ ! -x "$INSTALL_DIR/$BINARY_NAME" ]; then
+        echo "❌ CLI installation failed - binary not found at $INSTALL_DIR/$BINARY_NAME"
+    fi
+    if [ ! -d "/Applications/$APP_BUNDLE" ]; then
+        echo "❌ Menu Bar App installation failed - app not found at /Applications/$APP_BUNDLE"
+    fi
     exit 1
 fi
 
@@ -142,4 +214,4 @@ if [ -f "$CORE_SWIFT.backup" ]; then
     mv "$CORE_SWIFT.backup" "$CORE_SWIFT"
 fi
 
-echo "✨ Installation complete!"
+echo "✨ Installation complete! Both Para CLI and Menu Bar App are ready to use."
