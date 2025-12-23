@@ -202,9 +202,8 @@ extension Para {
 
             // Open the .org file in the associated app if openOnCreate is true
             if openOnCreate && !ParaGlobals.jsonMode {
-                if let url = URL(string: "file://" + "\(folderPath)/journal.org") {
-                    NSWorkspace.shared.open(url)
-                }
+                let url = URL(fileURLWithPath: "\(folderPath)/journal.org")
+                NSWorkspace.shared.open(url)
             }
         }
     }
@@ -265,7 +264,7 @@ extension Para {
         func archiveFolder(type: String, name: String) {
             let fromPath: String = Para.getParaFolderPath(type: type, name: name)
             let homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
-            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Dropbox/para/archive/\(name)"
+            let toPath: String = Para.getArchiveFolderPath(name: name) ?? "\(homeDir)/Documents/archive/\(name)"
 
             do {
                 try Para.moveToArchive(from: fromPath, to: toPath)
@@ -471,9 +470,8 @@ extension Para {
 
             // Open the journal.org file (only in human mode)
             if !ParaGlobals.jsonMode {
-                if let url = URL(string: "file://" + journalPath) {
-                    NSWorkspace.shared.open(url)
-                }
+                let url = URL(fileURLWithPath: journalPath)
+                NSWorkspace.shared.open(url)
             }
 
             let data: [String: Any] = [
@@ -517,22 +515,24 @@ extension Para {
             }
         )
         var name: String
-        
-        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") 
+
+        @Flag(inversion: .prefixedNo, help: "Provide additional details on success.")
         var verbose = false
+
+        @OptionGroup var globalOptions: Para
 
         func run() throws {
             revealFolder(type: type.rawValue, name: name)
         }
-        
+
         func revealFolder(type: String, name: String) {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type, name: name)
-            
+
             // Open the folder in Finder (only in human mode)
             if !ParaGlobals.jsonMode {
-                if let url = URL(string: "file://" + folderPath) {
-                    NSWorkspace.shared.open(url)
-                }
+                let url = URL(fileURLWithPath: folderPath)
+                NSWorkspace.shared.open(url)
             }
             
             let data: [String: Any] = [
@@ -575,7 +575,10 @@ extension Para {
         )
         var name: String
 
+        @OptionGroup var globalOptions: Para
+
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
 
             // Check if the folder exists
@@ -724,7 +727,10 @@ extension Para {
         )
         var name: String
 
+        @OptionGroup var globalOptions: Para
+
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
 
@@ -784,7 +790,10 @@ extension Para {
         )
         var name: String
 
+        @OptionGroup var globalOptions: Para
+
         func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
             let folderPath = Para.getParaFolderPath(type: type.rawValue, name: name)
             let journalPath = "\(folderPath)/journal.org"
             
