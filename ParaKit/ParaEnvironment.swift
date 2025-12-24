@@ -9,16 +9,14 @@ import Foundation
 
 /// Environment configuration and paths for the PARA system
 public struct ParaEnvironment {
-    /// Base directory for PARA system (from PARA_HOME environment variable)
+    /// Base directory for PARA system (UserDefaults > Environment > Default)
     public static var paraHome: String {
-        ProcessInfo.processInfo.environment["PARA_HOME"] ??
-            NSString(string: "~/Documents/PARA").expandingTildeInPath
+        ParaSettings.shared.effectiveParaHome
     }
 
-    /// Archive directory (from PARA_ARCHIVE environment variable)
+    /// Archive directory (UserDefaults > Environment > Default)
     public static var paraArchive: String {
-        ProcessInfo.processInfo.environment["PARA_ARCHIVE"] ??
-            NSString(string: "~/Documents/archive").expandingTildeInPath
+        ParaSettings.shared.effectiveParaArchive
     }
 
     /// Path to projects directory

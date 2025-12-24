@@ -60,7 +60,7 @@ public class ParaManager: ObservableObject {
     // MARK: - Create
 
     /// Create a new project or area
-    public func createItem(type: ParaItemType, name: String, open: Bool = false) throws -> ParaItem {
+    public func createItem(type: ParaItemType, name: String, description: String? = nil, open: Bool = false) throws -> ParaItem {
         guard type == .project || type == .area else {
             throw ParaError.invalidOperation("Can only create projects and areas")
         }
@@ -72,9 +72,17 @@ public class ParaManager: ObservableObject {
 
         // Create journal.org file with template
         let journalPath = "\(folderPath)/journal.org"
-        let journalContent = """
+        var journalContent = """
         #+TITLE: \(name)
         #+CATEGORY: \(name)
+        """
+
+        if let desc = description, !desc.isEmpty {
+            journalContent += "\n#+DESCRIPTION: \(desc)"
+        }
+
+        journalContent += """
+
 
         * Notes
 

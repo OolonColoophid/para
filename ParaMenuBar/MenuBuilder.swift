@@ -68,10 +68,33 @@ struct MenuBuilder {
         // Separator
         menu.addItem(NSMenuItem.separator())
 
+        // New Project
+        let newProjectItem = NSMenuItem(title: "New Project...", action: #selector(MenuActions.newProject), keyEquivalent: "n")
+        newProjectItem.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: nil)
+        newProjectItem.target = MenuActions.shared
+        newProjectItem.representedObject = paraManager
+        menu.addItem(newProjectItem)
+
+        // New Area
+        let newAreaItem = NSMenuItem(title: "New Area...", action: #selector(MenuActions.newArea), keyEquivalent: "")
+        newAreaItem.image = NSImage(systemSymbolName: "hexagon.badge.plus", accessibilityDescription: nil)
+        newAreaItem.target = MenuActions.shared
+        newAreaItem.representedObject = paraManager
+        menu.addItem(newAreaItem)
+
+        // Separator
+        menu.addItem(NSMenuItem.separator())
+
         // About
         let aboutItem = NSMenuItem(title: "About", action: #selector(MenuActions.showAbout), keyEquivalent: "")
         aboutItem.target = MenuActions.shared
         menu.addItem(aboutItem)
+
+        // Settings
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(MenuActions.showSettings), keyEquivalent: ",")
+        settingsItem.target = MenuActions.shared
+        settingsItem.representedObject = paraManager
+        menu.addItem(settingsItem)
 
         // Refresh
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(MenuActions.refresh), keyEquivalent: "r")
@@ -221,24 +244,40 @@ class MenuActions: NSObject {
         paraManager.refresh()
     }
 
+    @objc func newProject(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+        NewItemWindowController.shared.showNewItem(type: .project, paraManager: paraManager)
+    }
+
+    @objc func newArea(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+        NewItemWindowController.shared.showNewItem(type: .area, paraManager: paraManager)
+    }
+
+    @objc func showSettings(_ sender: NSMenuItem) {
+        // Store paraManager for refresh after settings close
+        if let paraManager = sender.representedObject as? ParaManager {
+            // Observe settings changes to refresh
+            NotificationCenter.default.addObserver(
+                forName: .paraSettingsChanged,
+                object: nil,
+                queue: .main
+            ) { [weak paraManager] _ in
+                paraManager?.refresh()
+            }
+        }
+        SettingsWindowController.shared.showSettings()
+    }
+
     @objc func showAbout(_ sender: NSMenuItem) {
         let alert = NSAlert()
-        alert.messageText = "Para - PARA System Manager"
+        alert.messageText = "Para"
         alert.informativeText = """
         Version 0.1
 
-        A productivity tool for managing your PARA system (Projects, Areas, Resources, Archives).
+        A menu bar app for managing your PARA system (Projects, Areas, Resources, Archives).
 
-        Environment:
-        • PARA_HOME: \(ParaEnvironment.paraHome)
-        • PARA_ARCHIVE: \(ParaEnvironment.paraArchive)
-
-        Usage:
-        • Click menu items to open, reveal, archive, or delete
-        • Auto-refreshes when files change
-        • Use 'para' CLI for command-line access
-
-        Created by Ian Hocking with Claude (Anthropic)
+        Use Settings to configure your PARA directories.
 
         © 2025 Ian Hocking. Open source software.
         """
