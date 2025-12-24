@@ -273,7 +273,8 @@ class MenuActions: NSObject {
         let alert = NSAlert()
         alert.messageText = "Para"
         alert.informativeText = """
-        Version 0.1
+        \(ParaVersion.displayString)
+        Built: \(ParaVersion.buildTimestamp)
 
         A menu bar app for managing your PARA system (Projects, Areas, Resources, Archives).
 

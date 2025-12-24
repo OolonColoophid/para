@@ -41,6 +41,16 @@ if [ -f "$CORE_SWIFT" ]; then
     mv "$CORE_SWIFT.tmp" "$CORE_SWIFT"
 fi
 
+# Also inject into ParaKit for menu bar app
+VERSION_SWIFT="$SCRIPT_DIR/ParaKit/ParaVersion.swift"
+if [ -f "$VERSION_SWIFT" ]; then
+    cp "$VERSION_SWIFT" "$VERSION_SWIFT.backup"
+    sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
+        -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
+        "$VERSION_SWIFT" > "$VERSION_SWIFT.tmp"
+    mv "$VERSION_SWIFT.tmp" "$VERSION_SWIFT"
+fi
+
 # Build using Swift Package Manager
 echo "   Building CLI with Swift Package Manager..."
 swift build -c release --product para
@@ -76,6 +86,33 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp "$MENUBAR_BINARY" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
+# Create app icon from asset catalog
+echo "   Creating app icon..."
+ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
+mkdir -p "$ICONSET_DIR"
+ASSETS_DIR="$SCRIPT_DIR/Assets.xcassets/AppIcon.appiconset"
+if [ -d "$ASSETS_DIR" ]; then
+    # Copy icons with correct names for iconutil
+    cp "$ASSETS_DIR/mac16.png" "$ICONSET_DIR/icon_16x16.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac32.png" "$ICONSET_DIR/icon_16x16@2x.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac32.png" "$ICONSET_DIR/icon_32x32.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac64.png" "$ICONSET_DIR/icon_32x32@2x.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac128.png" "$ICONSET_DIR/icon_128x128.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac256.png" "$ICONSET_DIR/icon_128x128@2x.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac256.png" "$ICONSET_DIR/icon_256x256.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac512.png" "$ICONSET_DIR/icon_256x256@2x.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac512.png" "$ICONSET_DIR/icon_512x512.png" 2>/dev/null || true
+    cp "$ASSETS_DIR/mac1024.png" "$ICONSET_DIR/icon_512x512@2x.png" 2>/dev/null || true
+
+    # Create .icns file
+    if iconutil -c icns "$ICONSET_DIR" -o "$APP_DIR/Contents/Resources/AppIcon.icns" 2>/dev/null; then
+        echo "   ✅ App icon created"
+    else
+        echo "   ⚠️  Could not create .icns file"
+    fi
+    rm -rf "$ICONSET_DIR"
+fi
+
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -86,6 +123,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
 	<string>Para</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.para.menubar</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleName</key>
 	<string>Para</string>
 	<key>CFBundlePackageType</key>
@@ -208,10 +247,13 @@ fi
 echo "🧹 Cleaning up build files..."
 rm -rf "$BUILD_DIR"
 
-# Restore original source file
-echo "   Restoring original source file..."
+# Restore original source files
+echo "   Restoring original source files..."
 if [ -f "$CORE_SWIFT.backup" ]; then
     mv "$CORE_SWIFT.backup" "$CORE_SWIFT"
+fi
+if [ -f "$VERSION_SWIFT.backup" ]; then
+    mv "$VERSION_SWIFT.backup" "$VERSION_SWIFT"
 fi
 
 echo "✨ Installation complete! Both Para CLI and Menu Bar App are ready to use."
