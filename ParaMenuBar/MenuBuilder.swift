@@ -77,7 +77,7 @@ struct MenuBuilder {
 
         // New Area
         let newAreaItem = NSMenuItem(title: "New Area...", action: #selector(MenuActions.newArea), keyEquivalent: "")
-        newAreaItem.image = NSImage(systemSymbolName: "hexagon.badge.plus", accessibilityDescription: nil)
+        newAreaItem.image = NSImage(systemSymbolName: "hexagon.fill", accessibilityDescription: nil)
         newAreaItem.target = MenuActions.shared
         newAreaItem.representedObject = paraManager
         menu.addItem(newAreaItem)
