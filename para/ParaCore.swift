@@ -20,8 +20,8 @@ struct Para: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
-        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
+        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n  para terminal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -535,18 +535,144 @@ extension Para {
                 let url = URL(fileURLWithPath: folderPath)
                 NSWorkspace.shared.open(url)
             }
-            
+
             let data: [String: Any] = [
                 "type": type,
                 "name": name,
                 "path": folderPath,
                 "revealed": !ParaGlobals.jsonMode
             ]
-            
+
             Para.outputSuccess("Revealed folder for \(type): \(name)", data: data)
         }
     }
-    
+
+    struct Terminal: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "<project|area> <name> — Open folder in terminal app",
+            usage: "para terminal <project|area> <name>"
+        )
+
+        @Argument(
+            help: "Type of folder to open (project or area)",
+            completion: .list(["project", "area"])
+        )
+        var type: FolderType
+
+        @Argument(
+            help: "Name of the folder",
+            completion: CompletionKind.custom { _, _, _ in
+                var items: [String] = []
+                if CommandLine.arguments.contains("project") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                }
+                return items
+            }
+        )
+        var name: String
+
+        @Option(help: "Terminal app to use (default: Terminal)")
+        var app: String?
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+
+            // Check if folder exists
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir) && isDir.boolValue else {
+                Para.outputError("\(type.rawValue.capitalized) '\(name)' does not exist")
+                return
+            }
+
+            // Determine terminal app to use
+            let terminalApp = app ?? ParaSettings.shared.effectiveTerminalApp
+
+            // Open in terminal (only in human mode)
+            if !ParaGlobals.jsonMode {
+                openInTerminal(path: folderPath, terminalApp: terminalApp)
+            }
+
+            let data: [String: Any] = [
+                "type": type.rawValue,
+                "name": name,
+                "path": folderPath,
+                "terminalApp": terminalApp,
+                "opened": !ParaGlobals.jsonMode
+            ]
+
+            Para.outputSuccess("Opened \(type.rawValue) '\(name)' in \(terminalApp)", data: data)
+        }
+
+        private func openInTerminal(path: String, terminalApp: String) {
+            switch terminalApp.lowercased() {
+            case "iterm", "iterm2":
+                let script = """
+                tell application "iTerm"
+                    activate
+                    try
+                        set newWindow to (create window with default profile)
+                        tell current session of newWindow
+                            write text "cd '\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
+                        end tell
+                    on error
+                        tell current window
+                            create tab with default profile
+                            tell current session
+                                write text "cd '\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
+                            end tell
+                        end tell
+                    end try
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                }
+
+            case "warp":
+                let script = """
+                tell application "Warp"
+                    activate
+                    do script "cd '\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                }
+
+            case "terminal":
+                // Use 'open' command which is more reliable
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                process.arguments = ["-a", "Terminal", path]
+                try? process.run()
+                process.waitUntilExit()
+
+            default:
+                // Fallback: try running the app name directly with AppleScript
+                let script = """
+                tell application "\(terminalApp)"
+                    activate
+                    do script "cd '\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                }
+            }
+        }
+    }
+
     struct Directory: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "<project|area> <name> — Return directory path",

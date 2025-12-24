@@ -12,9 +12,13 @@ struct SettingsView: View {
     @ObservedObject private var settings = ParaSettings.shared
     @State private var paraHomeText: String = ""
     @State private var paraArchiveText: String = ""
+    @State private var terminalAppText: String = ""
     @Environment(\.dismiss) private var dismiss
 
     private let labelWidth: CGFloat = 120
+
+    /// Common terminal apps for the picker
+    private let terminalApps = ["Terminal", "iTerm", "Warp", "Alacritty", "Kitty", "Hyper"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -60,7 +64,7 @@ struct SettingsView: View {
                     HStack {
                         Text("PARA Home:")
                             .frame(width: 80, alignment: .trailing)
-                        TextField("Leave empty for default", text: $paraHomeText)
+                        TextField(settings.effectiveParaHome, text: $paraHomeText)
                             .textFieldStyle(.roundedBorder)
                         Button("Browse...") {
                             browseForFolder { paraHomeText = $0 }
@@ -71,7 +75,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Archive:")
                             .frame(width: 80, alignment: .trailing)
-                        TextField("Leave empty for default", text: $paraArchiveText)
+                        TextField(settings.effectiveParaArchive, text: $paraArchiveText)
                             .textFieldStyle(.roundedBorder)
                         Button("Browse...") {
                             browseForFolder { paraArchiveText = $0 }
@@ -94,6 +98,35 @@ struct SettingsView: View {
                 .padding(8)
             }
 
+            // Terminal app section
+            GroupBox("Terminal Application") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Terminal:")
+                            .frame(width: 80, alignment: .trailing)
+                        TextField(settings.effectiveTerminalApp, text: $terminalAppText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 200)
+                        Menu {
+                            Button("Terminal (Default)") { terminalAppText = "" }
+                            Divider()
+                            ForEach(terminalApps, id: \.self) { app in
+                                Button(app) { terminalAppText = app }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .frame(width: 24)
+                    }
+
+                    Text("Enter app name or select from common terminals. Supported: Terminal, iTerm, Warp.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
             Divider()
 
             // Buttons
@@ -101,8 +134,10 @@ struct SettingsView: View {
                 Button("Reset") {
                     paraHomeText = ""
                     paraArchiveText = ""
+                    terminalAppText = ""
                     settings.paraHome = nil
                     settings.paraArchive = nil
+                    settings.terminalApp = nil
                 }
 
                 Spacer()
@@ -115,6 +150,7 @@ struct SettingsView: View {
                 Button("Save") {
                     settings.paraHome = paraHomeText.isEmpty ? nil : paraHomeText
                     settings.paraArchive = paraArchiveText.isEmpty ? nil : paraArchiveText
+                    settings.terminalApp = terminalAppText.isEmpty ? nil : terminalAppText
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -126,6 +162,7 @@ struct SettingsView: View {
         .onAppear {
             paraHomeText = settings.paraHome ?? ""
             paraArchiveText = settings.paraArchive ?? ""
+            terminalAppText = settings.terminalApp ?? ""
         }
     }
 

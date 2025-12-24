@@ -11,6 +11,7 @@ import Foundation
 private enum SettingsKey: String {
     case paraHome = "ParaHome"
     case paraArchive = "ParaArchive"
+    case terminalApp = "TerminalApp"
 }
 
 /// User-configurable settings for the PARA system
@@ -43,10 +44,22 @@ public class ParaSettings: ObservableObject {
         }
     }
 
+    /// Terminal application to use (nil means use default Terminal.app)
+    @Published public var terminalApp: String? {
+        didSet {
+            if let value = terminalApp, !value.isEmpty {
+                defaults.set(value, forKey: SettingsKey.terminalApp.rawValue)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.terminalApp.rawValue)
+            }
+        }
+    }
+
     private init() {
         // Load saved values
         self.paraHome = defaults.string(forKey: SettingsKey.paraHome.rawValue)
         self.paraArchive = defaults.string(forKey: SettingsKey.paraArchive.rawValue)
+        self.terminalApp = defaults.string(forKey: SettingsKey.terminalApp.rawValue)
     }
 
     /// Get the effective PARA home path (UserDefaults > Environment > Default)
@@ -95,6 +108,22 @@ public class ParaSettings: ObservableObject {
         }
         if ProcessInfo.processInfo.environment["PARA_ARCHIVE"] != nil {
             return .environment
+        }
+        return .defaultValue
+    }
+
+    /// Get the effective terminal app (UserDefaults > Default)
+    public var effectiveTerminalApp: String {
+        if let saved = terminalApp, !saved.isEmpty {
+            return saved
+        }
+        return "Terminal"  // macOS default
+    }
+
+    /// Source of current terminal app setting
+    public var terminalAppSource: SettingSource {
+        if let saved = terminalApp, !saved.isEmpty {
+            return .userDefaults
         }
         return .defaultValue
     }

@@ -142,6 +142,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Para needs to control Terminal to open project and area folders.</string>
 </dict>
 </plist>
 PLIST_EOF

@@ -150,6 +150,13 @@ struct MenuBuilder {
         revealItem.representedObject = (paraManager, item)
         itemMenu.addItem(revealItem)
 
+        // Open in Terminal
+        let terminalItem = NSMenuItem(title: "Open in Terminal", action: #selector(MenuActions.openInTerminal), keyEquivalent: "")
+        terminalItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+        terminalItem.target = MenuActions.shared
+        terminalItem.representedObject = (paraManager, item)
+        itemMenu.addItem(terminalItem)
+
         // Separator
         itemMenu.addItem(NSMenuItem.separator())
 
@@ -187,6 +194,11 @@ class MenuActions: NSObject {
     @objc func revealInFinder(_ sender: NSMenuItem) {
         guard let (paraManager, item) = sender.representedObject as? (ParaManager, ParaItem) else { return }
         paraManager.revealInFinder(item)
+    }
+
+    @objc func openInTerminal(_ sender: NSMenuItem) {
+        guard let (paraManager, item) = sender.representedObject as? (ParaManager, ParaItem) else { return }
+        paraManager.openInTerminal(item)
     }
 
     @objc func archiveItem(_ sender: NSMenuItem) {
