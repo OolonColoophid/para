@@ -30,9 +30,11 @@ echo "   Build timestamp: $BUILD_TIMESTAMP"
 # Replace build placeholders in source code
 echo "   Injecting build information into source..."
 CORE_SWIFT="$SCRIPT_DIR/para/ParaCore.swift"
+CORE_SWIFT_BACKUP="$BUILD_DIR/ParaCore.swift.backup"
 if [ -f "$CORE_SWIFT" ]; then
-    # Backup original source file
-    cp "$CORE_SWIFT" "$CORE_SWIFT.backup"
+    # Backup original source file (outside source tree to avoid SPM warnings)
+    mkdir -p "$BUILD_DIR"
+    cp "$CORE_SWIFT" "$CORE_SWIFT_BACKUP"
 
     # Create a temporary copy with build info injected
     sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
@@ -43,8 +45,9 @@ fi
 
 # Also inject into ParaKit for menu bar app
 VERSION_SWIFT="$SCRIPT_DIR/ParaKit/ParaVersion.swift"
+VERSION_SWIFT_BACKUP="$BUILD_DIR/ParaVersion.swift.backup"
 if [ -f "$VERSION_SWIFT" ]; then
-    cp "$VERSION_SWIFT" "$VERSION_SWIFT.backup"
+    cp "$VERSION_SWIFT" "$VERSION_SWIFT_BACKUP"
     sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
         -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
         "$VERSION_SWIFT" > "$VERSION_SWIFT.tmp"
@@ -243,17 +246,18 @@ else
     exit 1
 fi
 
-# Clean up build directory
-echo "🧹 Cleaning up build files..."
-rm -rf "$BUILD_DIR"
-
-# Restore original source files
+# Restore original source files (before cleaning build dir where backups are stored)
+echo "🧹 Cleaning up..."
 echo "   Restoring original source files..."
-if [ -f "$CORE_SWIFT.backup" ]; then
-    mv "$CORE_SWIFT.backup" "$CORE_SWIFT"
+if [ -f "$CORE_SWIFT_BACKUP" ]; then
+    mv "$CORE_SWIFT_BACKUP" "$CORE_SWIFT"
 fi
-if [ -f "$VERSION_SWIFT.backup" ]; then
-    mv "$VERSION_SWIFT.backup" "$VERSION_SWIFT"
+if [ -f "$VERSION_SWIFT_BACKUP" ]; then
+    mv "$VERSION_SWIFT_BACKUP" "$VERSION_SWIFT"
 fi
+
+# Clean up build directory
+echo "   Removing build files..."
+rm -rf "$BUILD_DIR"
 
 echo "✨ Installation complete! Both Para CLI and Menu Bar App are ready to use."

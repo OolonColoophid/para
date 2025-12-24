@@ -223,7 +223,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -298,7 +298,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -445,7 +445,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -501,7 +501,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -561,7 +561,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -629,7 +629,7 @@ extension Para {
 
         @Argument(
             help: "Name of the project or area (required for project/area types)",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 if CommandLine.arguments.contains("project") {
                     return ParaFileSystem.completeFolders(type: "project")
                 }
@@ -710,7 +710,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
@@ -773,7 +773,7 @@ extension Para {
 
         @Argument(
             help: "Name of the folder",
-            completion: CompletionKind.custom { _ in
+            completion: CompletionKind.custom { _, _, _ in
                 var items: [String] = []
                 if CommandLine.arguments.contains("project") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
