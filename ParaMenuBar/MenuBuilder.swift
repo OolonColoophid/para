@@ -34,14 +34,14 @@ struct MenuBuilder {
         if !paraManager.areas.isEmpty {
             let areasSubmenu = buildSubmenu(
                 title: "Areas",
-                symbolName: "circle.hexagongrid.fill",
+                symbolName: "hexagon.fill",
                 items: paraManager.areas,
                 paraManager: paraManager
             )
             menu.addItem(areasSubmenu)
         } else {
             let item = NSMenuItem(title: "Areas (none)", action: nil, keyEquivalent: "")
-            item.image = NSImage(systemSymbolName: "circle.hexagongrid", accessibilityDescription: nil)
+            item.image = NSImage(systemSymbolName: "hexagon", accessibilityDescription: nil)
             item.isEnabled = false
             menu.addItem(item)
         }
