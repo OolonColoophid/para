@@ -34,9 +34,18 @@ CORE_SWIFT_BACKUP="$BUILD_DIR/ParaCore.swift.backup"
 if [ -f "$CORE_SWIFT" ]; then
     # Backup original source file (outside source tree to avoid SPM warnings)
     mkdir -p "$BUILD_DIR"
+
+    # First restore placeholders if file has injected values (from interrupted previous run)
+    sed -E \
+        -e 's/buildNumber: String = "[0-9]+"/buildNumber: String = "PARA_BUILD_NUMBER"/' \
+        -e 's/buildTimestamp: String = "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC"/buildTimestamp: String = "PARA_BUILD_TIMESTAMP"/' \
+        "$CORE_SWIFT" > "$CORE_SWIFT.tmp"
+    mv "$CORE_SWIFT.tmp" "$CORE_SWIFT"
+
+    # Now backup the clean source file
     cp "$CORE_SWIFT" "$CORE_SWIFT_BACKUP"
 
-    # Create a temporary copy with build info injected
+    # Inject build info
     sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
         -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
         "$CORE_SWIFT" > "$CORE_SWIFT.tmp"
@@ -47,7 +56,17 @@ fi
 VERSION_SWIFT="$SCRIPT_DIR/ParaKit/ParaVersion.swift"
 VERSION_SWIFT_BACKUP="$BUILD_DIR/ParaVersion.swift.backup"
 if [ -f "$VERSION_SWIFT" ]; then
+    # First restore placeholders if file has injected values
+    sed -E \
+        -e 's/buildNumber: String = "[0-9]+"/buildNumber: String = "PARA_BUILD_NUMBER"/' \
+        -e 's/buildTimestamp: String = "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC"/buildTimestamp: String = "PARA_BUILD_TIMESTAMP"/' \
+        "$VERSION_SWIFT" > "$VERSION_SWIFT.tmp"
+    mv "$VERSION_SWIFT.tmp" "$VERSION_SWIFT"
+
+    # Now backup the clean source file
     cp "$VERSION_SWIFT" "$VERSION_SWIFT_BACKUP"
+
+    # Inject build info
     sed -e "s/PARA_BUILD_TIMESTAMP/$BUILD_TIMESTAMP/g" \
         -e "s/PARA_BUILD_NUMBER/$BUILD_NUMBER/g" \
         "$VERSION_SWIFT" > "$VERSION_SWIFT.tmp"

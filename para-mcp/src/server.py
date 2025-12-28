@@ -15,11 +15,11 @@ from typing import Any, Dict, List, Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.server.sse import SseServerTransport
 from mcp.types import Tool, TextContent
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 import contextlib
 from typing import AsyncIterator
 
@@ -607,49 +607,47 @@ async def main():
 
     if use_http:
         # HTTP mode - for web access via Cloudflare Tunnel
-        logger.info("Running in HTTP mode (Streamable HTTP transport)")
+        logger.info("Running in HTTP mode (SSE transport)")
         port = int(os.environ.get("PORT", "8000"))
 
-        # Create session manager for Streamable HTTP
-        session_manager = StreamableHTTPSessionManager(app)
-
-        @contextlib.asynccontextmanager
-        async def lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
-            """Lifespan context manager for the Starlette app"""
-            async with session_manager.run():
-                logger.info("MCP session manager started")
-                yield
-                logger.info("MCP session manager stopped")
+        # Create SSE transport for Poke compatibility
+        sse = SseServerTransport("/messages/")
 
         async def health_check(request):
             """Health check endpoint for testing"""
             return JSONResponse({
                 "status": "ok",
                 "service": "para-mcp-server",
-                "transport": "streamable-http",
-                "mcp_endpoint": "/mcp"
+                "transport": "sse",
+                "sse_endpoint": "/sse",
+                "messages_endpoint": "/messages/"
             })
 
-        async def handle_mcp(request):
-            """Handle MCP requests via Streamable HTTP"""
-            await session_manager.handle_request(
+        async def handle_sse(request):
+            """Handle SSE connection for MCP"""
+            async with sse.connect_sse(
                 request.scope,
                 request.receive,
                 request._send
-            )
+            ) as streams:
+                await app.run(
+                    streams[0],
+                    streams[1],
+                    app.create_initialization_options()
+                )
 
-        # Create Starlette app with lifespan
+        # Create Starlette app with SSE routes
         starlette_app = Starlette(
             routes=[
                 Route("/", endpoint=health_check, methods=["GET"]),
-                Route("/mcp", endpoint=handle_mcp, methods=["GET", "POST"]),
+                Route("/sse", endpoint=handle_sse, methods=["GET"]),
+                Mount("/messages/", app=sse.handle_post_message),
             ],
-            lifespan=lifespan
         )
 
         import uvicorn
         logger.info(f"Server listening on http://0.0.0.0:{port}")
-        logger.info(f"MCP endpoint: http://0.0.0.0:{port}/mcp")
+        logger.info(f"SSE endpoint: http://0.0.0.0:{port}/sse")
         config = uvicorn.Config(starlette_app, host="0.0.0.0", port=port, log_level="info")
         server = uvicorn.Server(config)
         await server.serve()

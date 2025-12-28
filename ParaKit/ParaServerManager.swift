@@ -164,6 +164,9 @@ public class ParaServerManager {
             throw ParaServerError.serverNotRunning
         }
 
+        // Stop tunnel process first
+        stopTunnelProcess()
+
         // Send SIGTERM for graceful shutdown
         kill(pid, SIGTERM)
 
@@ -236,19 +239,167 @@ public class ParaServerManager {
 
     /// Start Cloudflare tunnel
     private func startTunnel(type: TunnelType) throws -> String {
-        let script: String
         switch type {
         case .quick:
-            script = "\(mcpDirectory)/scripts/start-quick-tunnel.sh"
+            return try startQuickTunnel()
         case .permanent:
-            script = "\(mcpDirectory)/scripts/start-tunnel.sh"
+            return try startPermanentTunnel()
         case .none:
             return ""
         }
+    }
 
-        // TODO: Implement tunnel starting and URL extraction
-        // For now, just return placeholder
-        return "https://placeholder.trycloudflare.com"
+    /// Start a quick Cloudflare tunnel (no setup required)
+    private func startQuickTunnel() throws -> String {
+        // Find cloudflared
+        guard let cloudflaredPath = findCloudflared() else {
+            throw ParaServerError.cloudflaredNotFound
+        }
+
+        // Use a log file for tunnel output to avoid pipe buffer issues
+        let tunnelLogPath = "\(mcpDirectory)/.tunnel.log"
+
+        // Create/truncate log file
+        FileManager.default.createFile(atPath: tunnelLogPath, contents: nil, attributes: nil)
+
+        guard let logFileHandle = FileHandle(forWritingAtPath: tunnelLogPath) else {
+            throw ParaServerError.tunnelSetupFailed
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: cloudflaredPath)
+        process.arguments = ["tunnel", "--url", "http://localhost:8000"]
+
+        // Redirect output to log file (keeps tunnel alive)
+        process.standardError = logFileHandle
+        process.standardOutput = FileHandle.nullDevice
+
+        try process.run()
+
+        // Save tunnel PID for cleanup
+        try saveTunnelPID(process.processIdentifier)
+
+        // Wait for URL to appear in log file
+        var tunnelURL: String? = nil
+        let startTime = Date()
+        let timeout: TimeInterval = 30
+
+        while tunnelURL == nil && Date().timeIntervalSince(startTime) < timeout {
+            usleep(500000) // 500ms between checks
+
+            // Read log file
+            if let content = try? String(contentsOfFile: tunnelLogPath, encoding: .utf8) {
+                // Look for trycloudflare.com URL
+                if let range = content.range(of: "https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", options: .regularExpression) {
+                    tunnelURL = String(content[range])
+                }
+            }
+        }
+
+        guard let url = tunnelURL else {
+            process.terminate()
+            throw ParaServerError.tunnelURLNotFound
+        }
+
+        return url
+    }
+
+    /// Start a permanent Cloudflare tunnel (requires setup)
+    private func startPermanentTunnel() throws -> String {
+        let script = "\(mcpDirectory)/scripts/start-tunnel.sh"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: script)
+        process.currentDirectoryURL = URL(fileURLWithPath: mcpDirectory)
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw ParaServerError.tunnelSetupFailed
+        }
+
+        // Read configured tunnel URL from config or output
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let output = String(data: data, encoding: .utf8),
+           let range = output.range(of: "https://[a-zA-Z0-9.-]+", options: .regularExpression) {
+            return String(output[range])
+        }
+
+        throw ParaServerError.tunnelURLNotFound
+    }
+
+    private func findCloudflared() -> String? {
+        let candidates = ["/usr/local/bin/cloudflared", "/opt/homebrew/bin/cloudflared"]
+
+        for candidate in candidates {
+            if FileManager.default.fileExists(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        // Try which
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["cloudflared"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                    return path
+                }
+            }
+        } catch {}
+
+        return nil
+    }
+
+    private var tunnelPidFilePath: String {
+        return "\(mcpDirectory)/.tunnel.pid"
+    }
+
+    private func saveTunnelPID(_ pid: Int32) throws {
+        try String(pid).write(toFile: tunnelPidFilePath, atomically: true, encoding: .utf8)
+    }
+
+    private func readTunnelPID() -> Int32? {
+        guard let content = try? String(contentsOfFile: tunnelPidFilePath) else { return nil }
+        return Int32(content.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func stopTunnelProcess() {
+        guard let pid = readTunnelPID() else { return }
+
+        // Send SIGTERM
+        kill(pid, SIGTERM)
+
+        // Wait briefly for graceful shutdown
+        var attempts = 0
+        while attempts < 10 {
+            if kill(pid, 0) != 0 {
+                break
+            }
+            usleep(100000) // 100ms
+            attempts += 1
+        }
+
+        // Force kill if still running
+        if kill(pid, 0) == 0 {
+            kill(pid, SIGKILL)
+        }
+
+        // Clean up PID file
+        try? FileManager.default.removeItem(atPath: tunnelPidFilePath)
     }
 
     // MARK: - Process Management
@@ -264,7 +415,7 @@ public class ParaServerManager {
         // Set environment variables
         var env = ProcessInfo.processInfo.environment
         env["PARA_HOME"] = ParaEnvironment.paraHome
-        env["PARA_ARCHIVE"] = ParaEnvironment.archivePath ?? ""
+        env["PARA_ARCHIVE"] = ParaEnvironment.archivePath
         env["USE_HTTP"] = "true"
         env["PORT"] = String(port)
         process.environment = env
@@ -365,6 +516,8 @@ public enum ParaServerError: Error, LocalizedError {
     case serverAlreadyRunning(pid: Int32)
     case serverNotRunning
     case tunnelSetupFailed
+    case cloudflaredNotFound
+    case tunnelURLNotFound
 
     public var errorDescription: String? {
         switch self {
@@ -382,6 +535,10 @@ public enum ParaServerError: Error, LocalizedError {
             return "MCP server is not running."
         case .tunnelSetupFailed:
             return "Failed to set up Cloudflare tunnel."
+        case .cloudflaredNotFound:
+            return "cloudflared not found. Install with: brew install cloudflared"
+        case .tunnelURLNotFound:
+            return "Failed to get tunnel URL from cloudflared. Check your network connection."
         }
     }
 }

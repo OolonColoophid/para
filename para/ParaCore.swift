@@ -15,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "42"
-    static let buildTimestamp: String = "2025-12-28 13:49:37 UTC"
+    static let buildNumber: String = "PARA_BUILD_NUMBER"
+    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
@@ -67,7 +67,7 @@ struct Para: ParsableCommand {
 
         For AI usage, add --json flag for machine-readable output.
         """,
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, Doctor.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -1259,8 +1259,14 @@ extension Para {
         }
 
         private func findAgendaScript() -> String {
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+
             // Try multiple locations
             let candidates = [
+                // Common development locations
+                "\(homeDir)/repos/other/para/para-mcp/scripts/export-agenda.sh",
+                "\(homeDir)/repos/para/para-mcp/scripts/export-agenda.sh",
+                "\(homeDir)/Developer/para/para-mcp/scripts/export-agenda.sh",
                 // Relative to executable (development)
                 Bundle.main.bundlePath + "/../../../para-mcp/scripts/export-agenda.sh",
                 // Installed location
@@ -1606,6 +1612,196 @@ $PARA_HOME/
         }
     }
 
+    // MARK: - Doctor Command
+
+    struct Doctor: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Check system setup and diagnose potential issues"
+        )
+
+        @OptionGroup var globalOptions: Para
+
+        func run() {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            var checks: [[String: Any]] = []
+            var allPassed = true
+
+            // Check 1: PARA_HOME directory
+            let paraHome = ParaEnvironment.paraHome
+            let homeExists = FileManager.default.fileExists(atPath: paraHome)
+            checks.append([
+                "name": "PARA_HOME directory",
+                "status": homeExists ? "ok" : "error",
+                "path": paraHome,
+                "message": homeExists ? "Directory exists" : "Directory not found. Create it or set PARA_HOME environment variable."
+            ])
+            if !homeExists { allPassed = false }
+
+            // Check 2: Projects directory
+            let projectsPath = "\(paraHome)/projects"
+            let projectsExists = FileManager.default.fileExists(atPath: projectsPath)
+            checks.append([
+                "name": "Projects directory",
+                "status": projectsExists ? "ok" : "warning",
+                "path": projectsPath,
+                "message": projectsExists ? "Directory exists" : "Directory not found. Run 'mkdir \(projectsPath)' to create it."
+            ])
+
+            // Check 3: Areas directory
+            let areasPath = "\(paraHome)/areas"
+            let areasExists = FileManager.default.fileExists(atPath: areasPath)
+            checks.append([
+                "name": "Areas directory",
+                "status": areasExists ? "ok" : "warning",
+                "path": areasPath,
+                "message": areasExists ? "Directory exists" : "Directory not found. Run 'mkdir \(areasPath)' to create it."
+            ])
+
+            // Check 4: PARA_ARCHIVE directory
+            let paraArchive = ParaEnvironment.paraArchive
+            let archiveExists = FileManager.default.fileExists(atPath: paraArchive)
+            checks.append([
+                "name": "PARA_ARCHIVE directory",
+                "status": archiveExists ? "ok" : "warning",
+                "path": paraArchive,
+                "message": archiveExists ? "Directory exists" : "Directory not found. Create it or set PARA_ARCHIVE environment variable."
+            ])
+
+            // Check 5: Agenda script
+            let agendaScript = findAgendaScript()
+            let agendaExists = FileManager.default.fileExists(atPath: agendaScript)
+            checks.append([
+                "name": "Agenda export script",
+                "status": agendaExists ? "ok" : "error",
+                "path": agendaScript,
+                "message": agendaExists ? "Script found" : "Script not found. The 'agenda' command will not work.",
+                "command": "agenda"
+            ])
+            if !agendaExists { allPassed = false }
+
+            // Check 6: ripgrep for fast search
+            let rgPath = findExecutable("rg")
+            checks.append([
+                "name": "ripgrep (rg)",
+                "status": rgPath != nil ? "ok" : "warning",
+                "path": rgPath ?? "not found",
+                "message": rgPath != nil ? "Installed - fast search enabled" : "Not installed. Install with 'brew install ripgrep' for faster search.",
+                "command": "search"
+            ])
+
+            // Check 7: MCP server venv
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+            let mcpVenvCandidates = [
+                "\(homeDir)/repos/other/para/para-mcp/venv",
+                "\(homeDir)/repos/para/para-mcp/venv"
+            ]
+            var mcpVenvPath: String? = nil
+            for candidate in mcpVenvCandidates {
+                if FileManager.default.fileExists(atPath: candidate) {
+                    mcpVenvPath = candidate
+                    break
+                }
+            }
+            checks.append([
+                "name": "MCP server environment",
+                "status": mcpVenvPath != nil ? "ok" : "warning",
+                "path": mcpVenvPath ?? "not found",
+                "message": mcpVenvPath != nil ? "Python venv found" : "Not set up. Run 'para server-setup' to enable MCP server.",
+                "command": "server-start"
+            ])
+
+            // Check 8: cloudflared for tunnels
+            let cloudflaredPath = findExecutable("cloudflared")
+            checks.append([
+                "name": "cloudflared",
+                "status": cloudflaredPath != nil ? "ok" : "warning",
+                "path": cloudflaredPath ?? "not found",
+                "message": cloudflaredPath != nil ? "Installed - tunnels enabled" : "Not installed. Install with 'brew install cloudflared' to enable remote access.",
+                "command": "server-start-quick-tunnel"
+            ])
+
+            // Output results
+            if ParaGlobals.jsonMode {
+                let data: [String: Any] = [
+                    "status": allPassed ? "ok" : "issues_found",
+                    "checks": checks
+                ]
+                Para.outputJSONAny(data)
+            } else {
+                print("Para Doctor - System Check\n")
+
+                for check in checks {
+                    let name = check["name"] as! String
+                    let status = check["status"] as! String
+                    let message = check["message"] as! String
+
+                    let icon: String
+                    switch status {
+                    case "ok": icon = "✓"
+                    case "warning": icon = "⚠"
+                    default: icon = "✗"
+                    }
+
+                    print("\(icon) \(name): \(message)")
+
+                    if let path = check["path"] as? String, status != "ok" {
+                        print("  Path: \(path)")
+                    }
+                }
+
+                print("")
+                if allPassed {
+                    print("All critical checks passed.")
+                } else {
+                    print("Some issues found. See above for details.")
+                }
+            }
+        }
+
+        private func findAgendaScript() -> String {
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+            let candidates = [
+                "\(homeDir)/repos/other/para/para-mcp/scripts/export-agenda.sh",
+                "\(homeDir)/repos/para/para-mcp/scripts/export-agenda.sh",
+                "\(homeDir)/Developer/para/para-mcp/scripts/export-agenda.sh",
+                Bundle.main.bundlePath + "/../../../para-mcp/scripts/export-agenda.sh",
+                "/usr/local/share/para/scripts/export-agenda.sh"
+            ]
+
+            for candidate in candidates {
+                if FileManager.default.fileExists(atPath: candidate) {
+                    return candidate
+                }
+            }
+            return candidates[0]
+        }
+
+        private func findExecutable(_ name: String) -> String? {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+            process.arguments = [name]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                if process.terminationStatus == 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                        return path
+                    }
+                }
+            } catch {}
+
+            return nil
+        }
+    }
+
     // MARK: - MCP Server Management Commands
 
     struct ServerSetup: ParsableCommand {
@@ -1732,7 +1928,7 @@ $PARA_HOME/
                 var message = "Server started at \(result.serverURL)"
                 if let tunnelURL = result.tunnelURL {
                     message += "\nTunnel: \(tunnelURL)"
-                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
+                    message += "\nAdd to Poke: \(tunnelURL)/sse"
                 }
 
                 Para.outputSuccess(message, data: data)
@@ -1788,7 +1984,7 @@ $PARA_HOME/
                 var message = "Server started at \(result.serverURL)"
                 if let tunnelURL = result.tunnelURL {
                     message += "\nTunnel: \(tunnelURL)"
-                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
+                    message += "\nAdd to Poke: \(tunnelURL)/sse"
                 }
 
                 Para.outputSuccess(message, data: data)
