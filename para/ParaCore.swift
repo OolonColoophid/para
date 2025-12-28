@@ -15,13 +15,13 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "32"
-    static let buildTimestamp: String = "2025-12-23 23:05:56 UTC"
+    static let buildNumber: String = "PARA_BUILD_NUMBER"
+    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n  para terminal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -1322,20 +1322,11 @@ $PARA_HOME/
     struct ServerStart: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "server-start",
-            abstract: "Start the Para MCP server with optional tunnel"
+            abstract: "Start the Para MCP server (local only)"
         )
-
-        @Flag(name: .long, help: "Start with quick Cloudflare tunnel (temporary URL)")
-        var quickTunnel = false
-
-        @Flag(name: .long, help: "Start with permanent Cloudflare tunnel")
-        var tunnel = false
 
         @Option(name: .long, help: "Server port (default: 8000)")
         var port: Int = 8000
-
-        @Flag(name: .long, help: "Run server in background (daemonize)")
-        var background = false
 
         @OptionGroup var globalOptions: Para
 
@@ -1350,23 +1341,62 @@ $PARA_HOME/
                 return
             }
 
-            // Determine tunnel type
-            let tunnelType: TunnelType
-            if quickTunnel {
-                tunnelType = .quick
-            } else if tunnel {
-                tunnelType = .permanent
-            } else {
-                tunnelType = .none
-            }
-
-            // Start server
+            // Start server (always in background, local only)
             do {
                 let result = try serverManager.startServer(
                     port: port,
-                    background: background,
-                    tunnel: tunnelType
+                    background: true,
+                    tunnel: .none
                 )
+
+                // Small delay to let server start before printing (prevents INFO logs from overwriting)
+                usleep(500000) // 0.5 second
+
+                let data: [String: Any] = [
+                    "serverURL": result.serverURL,
+                    "pid": result.pid,
+                    "port": result.port
+                ]
+
+                Para.outputSuccess("Server started at \(result.serverURL)", data: data)
+            } catch {
+                Para.outputError("Failed to start server: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct ServerStartTunnel: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-start-tunnel",
+            abstract: "Start the Para MCP server with quick Cloudflare tunnel"
+        )
+
+        @Option(name: .long, help: "Server port (default: 8000)")
+        var port: Int = 8000
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            // Check if environment is set up
+            guard serverManager.isEnvironmentSetup() else {
+                Para.outputError("MCP server not set up. Run 'para server-setup' first")
+                return
+            }
+
+            // Start server with quick tunnel (always in background)
+            do {
+                let result = try serverManager.startServer(
+                    port: port,
+                    background: true,
+                    tunnel: .quick
+                )
+
+                // Small delay to let server start before printing
+                usleep(500000) // 0.5 second
 
                 var data: [String: Any] = [
                     "serverURL": result.serverURL,
@@ -1378,7 +1408,7 @@ $PARA_HOME/
                     data["tunnelURL"] = tunnelURL
                 }
 
-                var message = "MCP server started on \(result.serverURL)"
+                var message = "Server started at \(result.serverURL)"
                 if let tunnelURL = result.tunnelURL {
                     message += "\nTunnel: \(tunnelURL)"
                     message += "\nAdd to Poke: \(tunnelURL)/mcp"

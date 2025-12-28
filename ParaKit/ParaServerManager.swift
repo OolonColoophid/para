@@ -21,24 +21,36 @@ public class ParaServerManager {
         var candidates: [String] = []
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
 
-        // 1. Relative to executable (for development builds in .build directory)
+        // 1. Check environment variable (highest priority for user override)
+        if let envPath = ProcessInfo.processInfo.environment["PARA_MCP_DIR"] {
+            candidates.append(envPath)
+        }
+
+        // 2. Relative to executable (for development builds in .build directory)
         if let executablePath = Bundle.main.executablePath {
             let executableDir = URL(fileURLWithPath: executablePath).deletingLastPathComponent().path
             // Go up from .build/arm64-apple-macosx/release to project root
             candidates.append("\(executableDir)/../../../para-mcp")
         }
 
-        // 2. Relative to current directory
+        // 3. Common development locations
+        candidates.append("\(homeDir)/repos/other/para/para-mcp")
+        candidates.append("\(homeDir)/repos/para/para-mcp")
+        candidates.append("\(homeDir)/Developer/para/para-mcp")
+        candidates.append("\(homeDir)/Projects/para/para-mcp")
+
+        // 4. Relative to current directory
         candidates.append(FileManager.default.currentDirectoryPath + "/para-mcp")
 
-        // 3. Standard install location (for future use)
+        // 5. Standard install location (for future use)
         candidates.append("\(homeDir)/.para/mcp-server")
 
-        // Find the first valid directory
+        // Find the first valid directory with venv
         var foundDirectory: String?
         for candidate in candidates {
+            let venvPath = "\(candidate)/venv"
             var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory) && isDirectory.boolValue {
+            if FileManager.default.fileExists(atPath: venvPath, isDirectory: &isDirectory) && isDirectory.boolValue {
                 foundDirectory = candidate
                 break
             }
