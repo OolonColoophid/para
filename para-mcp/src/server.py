@@ -172,7 +172,7 @@ async def list_tools() -> List[Tool]:
                     "caseSensitive": {
                         "type": "boolean",
                         "description": "Whether to perform case-sensitive search (default: false)",
-                        "default": false
+                        "default": False
                     }
                 },
                 "required": ["scope", "query"]
