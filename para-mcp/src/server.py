@@ -145,6 +145,39 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="para_search",
+            description="Search for text in Para files with context. Fast full-text search using ripgrep.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "enum": ["project", "area", "projects", "areas", "resources", "archive", "all"],
+                        "description": "Search scope: 'project' (specific), 'area' (specific), 'projects' (all), 'areas' (all), 'resources', 'archive', or 'all'"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the project or area (required when scope is 'project' or 'area')"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search query text"
+                    },
+                    "context": {
+                        "type": "integer",
+                        "description": "Number of context lines before/after each match (default: 2)",
+                        "default": 2
+                    },
+                    "caseSensitive": {
+                        "type": "boolean",
+                        "description": "Whether to perform case-sensitive search (default: false)",
+                        "default": false
+                    }
+                },
+                "required": ["scope", "query"]
+            }
+        ),
+        Tool(
             name="para_environment",
             description="Display environment configuration and validate Para setup (PARA_HOME, PARA_ARCHIVE, etc.).",
             inputSchema={
@@ -318,6 +351,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             return await handle_read(arguments)
         elif name == "para_headings":
             return await handle_headings(arguments)
+        elif name == "para_search":
+            return await handle_search(arguments)
         elif name == "para_environment":
             return await handle_environment(arguments)
         elif name == "para_version":
@@ -377,6 +412,39 @@ async def handle_headings(args: Dict[str, Any]) -> List[TextContent]:
     name = args["name"]
 
     result = run_para_command(["headings", item_type, name])
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+async def handle_search(args: Dict[str, Any]) -> List[TextContent]:
+    """Search for text in Para files"""
+    scope = args["scope"]
+    query = args["query"]
+    context = args.get("context", 2)
+    case_sensitive = args.get("caseSensitive", False)
+
+    # Build command arguments
+    cmd_args = ["search", scope]
+
+    # Add name if searching specific project/area
+    if scope in ["project", "area"]:
+        name = args.get("name")
+        if not name:
+            return [TextContent(type="text", text=json.dumps({
+                "error": f"'name' is required when scope is '{scope}'"
+            }, indent=2))]
+        cmd_args.append(name)
+
+    # Add query
+    cmd_args.append(query)
+
+    # Add optional flags
+    if context != 2:
+        cmd_args.extend(["-C", str(context)])
+
+    if case_sensitive:
+        cmd_args.append("--case-sensitive")
+
+    result = run_para_command(cmd_args)
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 

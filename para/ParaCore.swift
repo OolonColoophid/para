@@ -15,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "PARA_BUILD_NUMBER"
-    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
+    static let buildNumber: String = "42"
+    static let buildTimestamp: String = "2025-12-28 13:49:37 UTC"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
@@ -35,6 +35,7 @@ struct Para: ParsableCommand {
           path            Show path to a project/area/resource
           read            Read a project/area journal file
           headings        List headings from a project/area journal
+          search          Search for text with context (fast!)
           environment     Show current PARA environment settings
           version         Show Para version information
           ai-overview     Generate AI overview of projects/areas
@@ -51,6 +52,8 @@ struct Para: ParsableCommand {
         EXAMPLES:
           para create project roofBuild
           para archive area guitar
+          para search projects "TODO"
+          para search project myProject "meeting notes"
           para server-start-quick-tunnel
           para server-status --json
 
@@ -61,7 +64,7 @@ struct Para: ParsableCommand {
 
         For AI usage, add --json flag for machine-readable output.
         """,
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -999,7 +1002,172 @@ extension Para {
             }
         }
     }
-    
+
+    struct Search: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "search",
+            abstract: "Search for text in Para files with context",
+            usage: """
+            para search <scope> [name] <query>
+
+            Scopes:
+              project <name> <query>    Search a specific project
+              area <name> <query>       Search a specific area
+              projects <query>          Search all projects
+              areas <query>             Search all areas
+              resources <query>         Search resources folder
+              archive <query>           Search archive folder
+              all <query>               Search everything
+            """
+        )
+
+        @Argument(help: "Search scope (project, area, projects, areas, resources, archive, all)")
+        var scope: String
+
+        @Argument(help: "Item name (for project/area scope) or search query")
+        var firstArg: String
+
+        @Argument(help: "Search query (when name is specified)")
+        var secondArg: String?
+
+        @Option(name: [.customLong("context"), .customShort("C")], help: "Number of context lines before/after match")
+        var context: Int = 2
+
+        @Flag(name: .long, help: "Case-sensitive search")
+        var caseSensitive = false
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let query: String
+            let searchPath: String
+
+            // Determine search path and query based on scope
+            switch scope.lowercased() {
+            case "project":
+                guard let projectName = secondArg else {
+                    Para.outputError("Usage: para search project <name> <query>")
+                    return
+                }
+                let name = firstArg
+                searchPath = ParaFileSystem.getParaFolderPath(type: "project", name: name)
+                query = projectName
+
+                guard ParaFileSystem.folderExists(type: "project", name: name) else {
+                    Para.outputError("Project '\(name)' not found")
+                    return
+                }
+
+            case "area":
+                guard let areaQuery = secondArg else {
+                    Para.outputError("Usage: para search area <name> <query>")
+                    return
+                }
+                let name = firstArg
+                searchPath = ParaFileSystem.getParaFolderPath(type: "area", name: name)
+                query = areaQuery
+
+                guard ParaFileSystem.folderExists(type: "area", name: name) else {
+                    Para.outputError("Area '\(name)' not found")
+                    return
+                }
+
+            case "projects":
+                query = firstArg
+                searchPath = "\(ParaEnvironment.paraHome)/projects"
+
+            case "areas":
+                query = firstArg
+                searchPath = "\(ParaEnvironment.paraHome)/areas"
+
+            case "resources":
+                query = firstArg
+                searchPath = "\(ParaEnvironment.paraHome)/resources"
+
+            case "archive":
+                query = firstArg
+                searchPath = ParaEnvironment.paraArchive
+
+            case "all":
+                query = firstArg
+                searchPath = ParaEnvironment.paraHome
+
+            default:
+                Para.outputError("Invalid scope '\(scope)'. Use: project, area, projects, areas, resources, archive, or all")
+                return
+            }
+
+            // Verify search path exists
+            guard ParaFileSystem.directoryExists(at: searchPath) else {
+                Para.outputError("Search path does not exist: \(searchPath)")
+                return
+            }
+
+            // Perform search
+            let results = ParaFileSystem.searchFiles(
+                in: searchPath,
+                query: query,
+                contextLines: context,
+                caseSensitive: caseSensitive
+            )
+
+            // Output results
+            if ParaGlobals.jsonMode {
+                let jsonResults: [[String: Any]] = results.map { result in
+                    [
+                        "file": result.file,
+                        "lineNumber": result.lineNumber,
+                        "line": result.line,
+                        "contextBefore": result.contextBefore,
+                        "contextAfter": result.contextAfter
+                    ]
+                }
+                Para.outputJSONAny([
+                    "query": query,
+                    "scope": scope,
+                    "searchPath": searchPath,
+                    "matchCount": results.count,
+                    "results": jsonResults
+                ])
+            } else {
+                if results.isEmpty {
+                    print("No matches found for '\(query)' in \(scope)")
+                } else {
+                    print("Found \(results.count) match(es) for '\(query)' in \(scope):\n")
+
+                    for result in results {
+                        // Show file path relative to search path if possible
+                        let displayPath = result.file.hasPrefix(searchPath) ?
+                            String(result.file.dropFirst(searchPath.count + 1)) : result.file
+
+                        print("📄 \(displayPath):\(result.lineNumber)")
+
+                        // Show context before
+                        if !result.contextBefore.isEmpty {
+                            for line in result.contextBefore {
+                                print("  │ \(line)")
+                            }
+                        }
+
+                        // Show matching line (highlighted)
+                        print("  ▶ \(result.line)")
+
+                        // Show context after
+                        if !result.contextAfter.isEmpty {
+                            for line in result.contextAfter {
+                                print("  │ \(line)")
+                            }
+                        }
+
+                        print("") // Blank line between results
+                    }
+                }
+            }
+        }
+    }
+
     struct Environment: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Display current environment settings for the PARA system"

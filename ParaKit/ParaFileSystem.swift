@@ -152,4 +152,199 @@ public struct ParaFileSystem {
         let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
         return exists && isDir.boolValue
     }
+
+    // MARK: - Search
+
+    /// Find executable in PATH
+    private static func findExecutable(_ name: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = [name]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                    return path
+                }
+            }
+        } catch {
+            return nil
+        }
+
+        return nil
+    }
+
+    /// Search result with context
+    public struct SearchResult: Codable {
+        public let file: String
+        public let lineNumber: Int
+        public let line: String
+        public let contextBefore: [String]
+        public let contextAfter: [String]
+
+        public init(file: String, lineNumber: Int, line: String, contextBefore: [String], contextAfter: [String]) {
+            self.file = file
+            self.lineNumber = lineNumber
+            self.line = line
+            self.contextBefore = contextBefore
+            self.contextAfter = contextAfter
+        }
+    }
+
+    /// Search for text in files using ripgrep (fast) or grep (fallback)
+    public static func searchFiles(in path: String, query: String, contextLines: Int = 2, caseSensitive: Bool = false) -> [SearchResult] {
+        var results: [SearchResult] = []
+
+        // Try to find ripgrep first (much faster), fall back to grep
+        let rgPath = findExecutable("rg") ?? findExecutable("ripgrep")
+        let searchTool = rgPath ?? "/usr/bin/grep"
+        let isRipgrep = rgPath != nil
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: searchTool)
+
+        var args: [String] = []
+
+        if isRipgrep {
+            // Ripgrep arguments
+            args.append("--line-number")
+            args.append("--no-heading")
+            args.append("--with-filename")
+            args.append("--color=never")
+
+            if !caseSensitive {
+                args.append("--ignore-case")
+            }
+
+            if contextLines > 0 {
+                args.append("--context")
+                args.append(String(contextLines))
+            }
+
+            args.append(query)
+            args.append(path)
+        } else {
+            // Grep arguments
+            args.append("-r")
+            args.append("-n")
+
+            if !caseSensitive {
+                args.append("-i")
+            }
+
+            if contextLines > 0 {
+                args.append("-C")
+                args.append(String(contextLines))
+            }
+
+            args.append(query)
+            args.append(path)
+        }
+
+        process.arguments = args
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe() // Suppress errors
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 || process.terminationStatus == 1 else {
+                // Exit code 1 means no matches found (normal), other codes are errors
+                return results
+            }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8), !output.isEmpty else {
+                return results
+            }
+
+            // Parse ripgrep/grep output with context
+            // Format: "file:linenum:content" for matches, "file-linenum-content" for context
+            let lines = output.components(separatedBy: .newlines)
+
+            var i = 0
+            while i < lines.count {
+                let line = lines[i]
+
+                if line.isEmpty || line == "--" {
+                    i += 1
+                    continue
+                }
+
+                // Try to parse as match line (file:linenum:content)
+                if let colonIndex1 = line.firstIndex(of: ":"),
+                   let colonIndex2 = line[line.index(after: colonIndex1)...].firstIndex(of: ":") {
+
+                    let filePath = String(line[..<colonIndex1])
+                    let lineNumStr = String(line[line.index(after: colonIndex1)..<colonIndex2])
+
+                    if let lineNum = Int(lineNumStr) {
+                        let matchContent = String(line[line.index(after: colonIndex2)...])
+
+                        // Collect context before (look backwards for "-" lines)
+                        var beforeContext: [String] = []
+                        var j = i - 1
+                        while j >= 0 && beforeContext.count < contextLines {
+                            let prevLine = lines[j]
+                            if prevLine.isEmpty || prevLine == "--" { break }
+
+                            // Check if it's a context line (file-linenum-content)
+                            if let dashIndex1 = prevLine.firstIndex(of: "-"),
+                               let dashIndex2 = prevLine[prevLine.index(after: dashIndex1)...].firstIndex(of: "-") {
+                                let content = String(prevLine[prevLine.index(after: dashIndex2)...])
+                                beforeContext.insert(content, at: 0)
+                            } else {
+                                break
+                            }
+                            j -= 1
+                        }
+
+                        // Collect context after (look forward for "-" lines)
+                        var afterContext: [String] = []
+                        j = i + 1
+                        while j < lines.count && afterContext.count < contextLines {
+                            let nextLine = lines[j]
+                            if nextLine.isEmpty || nextLine == "--" { break }
+
+                            // Check if it's a context line (file-linenum-content)
+                            if let dashIndex1 = nextLine.firstIndex(of: "-"),
+                               let dashIndex2 = nextLine[nextLine.index(after: dashIndex1)...].firstIndex(of: "-") {
+                                let content = String(nextLine[nextLine.index(after: dashIndex2)...])
+                                afterContext.append(content)
+                            } else {
+                                break
+                            }
+                            j += 1
+                        }
+
+                        results.append(SearchResult(
+                            file: filePath,
+                            lineNumber: lineNum,
+                            line: matchContent,
+                            contextBefore: beforeContext,
+                            contextAfter: afterContext
+                        ))
+                    }
+                }
+
+                i += 1
+            }
+
+        } catch {
+            // If search tool fails, return empty results
+        }
+
+        return results
+    }
 }
