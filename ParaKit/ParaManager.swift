@@ -20,6 +20,15 @@ public class ParaManager: ObservableObject {
     @Published public private(set) var hasResources: Bool = false
     @Published public private(set) var hasArchive: Bool = false
 
+    // MCP Server Status
+    @Published public private(set) var mcpServerRunning: Bool = false
+    @Published public private(set) var mcpServerURL: String?
+    @Published public private(set) var mcpTunnelURL: String?
+
+    // MARK: - Server Manager
+
+    private var serverManager: ParaServerManager?
+
     // MARK: - Initialization
 
     public init() {
@@ -260,5 +269,29 @@ public class ParaManager: ObservableObject {
             return area
         }
         return nil
+    }
+
+    // MARK: - MCP Server Status
+
+    /// Initialize server manager if not already done
+    private func ensureServerManager() {
+        if serverManager == nil {
+            serverManager = ParaServerManager()
+        }
+    }
+
+    /// Refresh MCP server status
+    public func refreshServerStatus() {
+        ensureServerManager()
+
+        if let status = serverManager?.serverStatus() {
+            mcpServerRunning = status.isRunning
+            mcpServerURL = status.serverURL
+            mcpTunnelURL = status.tunnelURL
+        } else {
+            mcpServerRunning = false
+            mcpServerURL = nil
+            mcpTunnelURL = nil
+        }
     }
 }

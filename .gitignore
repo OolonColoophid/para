@@ -98,3 +98,19 @@ iOSInjectionProject/
 
 # End of https://www.toptal.com/developers/gitignore/api/objective-c,macos
 .aider*
+
+# Python / MCP Server
+para-mcp/venv/
+para-mcp/__pycache__/
+para-mcp/**/*.pyc
+para-mcp/**/*.pyo
+para-mcp/**/*.pyd
+para-mcp/.Python
+para-mcp/.server.pid
+para-mcp/.server.log
+para-mcp/.pytest_cache/
+para-mcp/**/.pytest_cache/
+para-mcp/**/__pycache__/
+para-mcp/*.egg-info/
+para-mcp/.coverage
+para-mcp/htmlcov/

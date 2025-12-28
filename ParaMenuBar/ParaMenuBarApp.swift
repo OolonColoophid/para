@@ -13,6 +13,7 @@ struct ParaMenuBarApp: App {
     @StateObject private var paraManager: ParaManager
     @StateObject private var menuBarManager: MenuBarManager
     @StateObject private var fileWatcher: FileWatcher
+    @StateObject private var mcpServerMonitor: MCPServerMonitor
 
     init() {
         // Create shared ParaManager instance
@@ -22,6 +23,7 @@ struct ParaMenuBarApp: App {
         _paraManager = StateObject(wrappedValue: manager)
         _menuBarManager = StateObject(wrappedValue: MenuBarManager(paraManager: manager))
         _fileWatcher = StateObject(wrappedValue: FileWatcher(paraManager: manager))
+        _mcpServerMonitor = StateObject(wrappedValue: MCPServerMonitor(paraManager: manager))
     }
 
     var body: some Scene {

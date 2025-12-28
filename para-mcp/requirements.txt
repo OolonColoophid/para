@@ -1,0 +1,11 @@
+# MCP Server SDK
+# Install from GitHub (not yet on PyPI)
+git+https://github.com/modelcontextprotocol/python-sdk.git
+
+# HTTP server support
+uvicorn>=0.27.0
+starlette>=0.36.0
+
+# Development dependencies (optional)
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

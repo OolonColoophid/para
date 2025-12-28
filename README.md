@@ -105,6 +105,164 @@ SUBCOMMANDS:
   para open project roofBuild
   ```
 
+## MCP Server Integration
+
+Para includes a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that allows AI assistants like Claude to interact with your PARA system. The MCP server exposes all para commands through a simple HTTP interface, enabling AI assistants to create projects, list areas, read journals, and more.
+
+### Setup
+
+The MCP server is optional and requires Python 3.10 or later.
+
+#### During Installation
+
+When running `./install.sh`, you'll be prompted to set up the MCP server:
+
+```bash
+🐍 MCP Server Setup
+   The Para MCP server enables AI assistants to interact with your Para system.
+   Set up MCP server now? [y/N]:
+```
+
+Choose `y` to automatically create the Python virtual environment and install dependencies.
+
+#### Manual Setup
+
+If you skipped the setup during installation, you can set it up later:
+
+```bash
+para server-setup
+```
+
+To configure a permanent Cloudflare tunnel for remote access:
+
+```bash
+para server-setup --tunnel
+```
+
+### Server Commands
+
+Para provides several commands for managing the MCP server:
+
+#### Start Server
+
+```bash
+# Start server on default port (8000)
+para server-start
+
+# Start with custom port
+para server-start --port 3000
+
+# Start as background daemon
+para server-start --background
+
+# Start with quick temporary tunnel (trycloudflare.com)
+para server-start --quick-tunnel
+
+# Start with permanent configured tunnel
+para server-start --tunnel
+```
+
+When started with `--quick-tunnel`, the server will output a public URL that you can use to connect from anywhere:
+
+```
+🚀 Starting Para MCP Server...
+🌐 Server: http://localhost:8000
+🔗 Tunnel: https://abc-def.trycloudflare.com
+📋 Add to Poke: https://abc-def.trycloudflare.com/mcp
+```
+
+#### Check Status
+
+```bash
+# View server status
+para server-status
+
+# Output status as JSON
+para server-status --json
+```
+
+#### Stop Server
+
+```bash
+para server-stop
+```
+
+#### View Logs
+
+```bash
+# View recent logs
+para server-logs
+
+# Follow logs in real-time
+para server-logs --follow
+
+# Show last 50 lines
+para server-logs --lines 50
+```
+
+### Using with AI Assistants
+
+Once the server is running, you can connect it to AI assistants that support MCP:
+
+1. **With Poke (Browser Extension)**:
+   - Install the [Poke extension](https://poke.new)
+   - Add the MCP endpoint: `http://localhost:8000/mcp` (or the tunnel URL if using `--quick-tunnel`)
+   - The assistant can now interact with your PARA system
+
+2. **With Claude Desktop**:
+   - Configure the MCP server in Claude Desktop settings
+   - Point to `http://localhost:8000/mcp`
+
+3. **Remote Access**:
+   - Use `para server-start --quick-tunnel` for temporary public URL
+   - Use `para server-setup --tunnel` + `para server-start --tunnel` for permanent tunnel
+
+### Available MCP Tools
+
+The MCP server exposes these tools to AI assistants:
+
+- `para_create` - Create new projects or areas
+- `para_archive` - Archive existing items
+- `para_delete` - Delete items permanently
+- `para_list` - List projects, areas, or all items
+- `para_open` - Open journal files
+- `para_reveal` - Reveal items in Finder
+- `para_terminal` - Open items in Terminal
+- `para_read` - Read journal contents
+- `para_headings` - Extract headings from journals
+- `para_path` - Get paths to PARA directories
+
+### Menu Bar App Integration
+
+The Para menu bar app shows the MCP server status at the top of the menu:
+
+- **When Stopped**: `○ MCP Server Stopped` (gray circle)
+- **When Running**: `● MCP Server Running` (green circle)
+  - Shows local server URL (clickable to copy)
+  - Shows tunnel URL if active (clickable to copy)
+
+The menu automatically updates every 2-3 seconds to reflect the current server state.
+
+### Architecture
+
+The MCP server is a Python application located in `para-mcp/` that uses:
+- Python MCP SDK for protocol implementation
+- Uvicorn for HTTP transport
+- Streamable HTTP transport (`/mcp` endpoint)
+
+The Para CLI manages the server lifecycle through Swift's `Foundation.Process` API, handling:
+- Virtual environment creation
+- Dependency installation
+- Process spawning and PID tracking
+- Graceful shutdown
+- Tunnel management via Cloudflare
+
+Version information:
+- Para CLI version: Shown in `para version`
+- MCP Server version: Defined in `para-mcp/pyproject.toml`
+
+Both components version independently, allowing the MCP server to evolve separately from the CLI.
+
 ## Example Org Mode File
 
 When a new project or area is created using the `para create` command, an Org mode file named `journal.org` is created inside the project or area folder.

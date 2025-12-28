@@ -248,6 +248,59 @@ else
     exit 1
 fi
 
+# MCP Server Setup (Optional)
+echo ""
+echo "🐍 MCP Server Setup"
+echo "   The Para MCP server enables AI assistants to interact with your Para system."
+read -p "   Set up MCP server now? [y/N]: " -n 1 -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    MCP_DIR="$SCRIPT_DIR/para-mcp"
+
+    # Check for Python 3.10+
+    PYTHON_CMD=""
+    for py in python3.12 python3.11 python3.10 python3; do
+        if command -v $py &> /dev/null; then
+            VERSION=$($py --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+            MAJOR=$(echo $VERSION | cut -d. -f1)
+            MINOR=$(echo $VERSION | cut -d. -f2)
+            if [ "$MAJOR" -ge 3 ] && [ "$MINOR" -ge 10 ]; then
+                PYTHON_CMD=$py
+                echo "   ✅ Found Python $VERSION at $(which $py)"
+                break
+            fi
+        fi
+    done
+
+    if [ -z "$PYTHON_CMD" ]; then
+        echo "   ❌ Python 3.10+ not found. Please install Python and run: para server-setup"
+        echo "   Visit: https://www.python.org/downloads/"
+    else
+        # Create virtual environment
+        echo "   Creating Python virtual environment..."
+        if $PYTHON_CMD -m venv "$MCP_DIR/venv"; then
+            echo "   ✅ Virtual environment created"
+
+            # Install dependencies
+            echo "   Installing MCP server dependencies..."
+            if "$MCP_DIR/venv/bin/pip" install -q -r "$MCP_DIR/requirements.txt"; then
+                echo "   ✅ Dependencies installed"
+                echo ""
+                echo "   🎉 MCP server is ready!"
+                echo "   • Start server: para server-start"
+                echo "   • Start with tunnel: para server-start --quick-tunnel"
+                echo "   • Check status: para server-status"
+            else
+                echo "   ❌ Failed to install dependencies. Run: para server-setup"
+            fi
+        else
+            echo "   ❌ Failed to create virtual environment. Run: para server-setup"
+        fi
+    fi
+else
+    echo "   ⏭️  Skipped MCP server setup. You can set it up later with: para server-setup"
+fi
+
 # Restore original source files (before cleaning build dir where backups are stored)
 echo "🧹 Cleaning up..."
 echo "   Restoring original source files..."

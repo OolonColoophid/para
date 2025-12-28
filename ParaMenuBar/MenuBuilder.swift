@@ -14,6 +14,9 @@ struct MenuBuilder {
     static func buildMenu(paraManager: ParaManager) -> NSMenu {
         let menu = NSMenu()
 
+        // MCP Server Status section
+        addServerStatusSection(to: menu, paraManager: paraManager)
+
         // Projects section
         if !paraManager.projects.isEmpty {
             let projectsSubmenu = buildSubmenu(
@@ -180,6 +183,88 @@ struct MenuBuilder {
 
         return menuItem
     }
+
+    /// Add MCP server status section at top of menu
+    private static func addServerStatusSection(to menu: NSMenu, paraManager: ParaManager) {
+        // Server status indicator
+        if paraManager.mcpServerRunning {
+            // Running: green circle
+            let statusItem = NSMenuItem(title: "MCP Server Running", action: nil, keyEquivalent: "")
+            statusItem.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)
+            if let image = statusItem.image {
+                let greenImage = image.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
+                        .applying(NSImage.SymbolConfiguration(paletteColors: [.systemGreen]))
+                )
+                statusItem.image = greenImage
+            }
+            statusItem.isEnabled = false
+            menu.addItem(statusItem)
+
+            // Local server URL
+            if let serverURL = paraManager.mcpServerURL {
+                let localItem = NSMenuItem(title: "   Local: \(serverURL)", action: #selector(MenuActions.copyServerURL), keyEquivalent: "")
+                localItem.target = MenuActions.shared
+                localItem.representedObject = serverURL
+                menu.addItem(localItem)
+            }
+
+            // Tunnel URL (if available)
+            if let tunnelURL = paraManager.mcpTunnelURL {
+                let tunnelItem = NSMenuItem(title: "   Tunnel: \(tunnelURL)", action: #selector(MenuActions.copyTunnelURL), keyEquivalent: "")
+                tunnelItem.target = MenuActions.shared
+                tunnelItem.representedObject = tunnelURL
+                menu.addItem(tunnelItem)
+            }
+        } else {
+            // Stopped: gray circle
+            let statusItem = NSMenuItem(title: "MCP Server Stopped", action: nil, keyEquivalent: "")
+            statusItem.image = NSImage(systemSymbolName: "circle", accessibilityDescription: nil)
+            if let image = statusItem.image {
+                let grayImage = image.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
+                        .applying(NSImage.SymbolConfiguration(paletteColors: [.systemGray]))
+                )
+                statusItem.image = grayImage
+            }
+            statusItem.isEnabled = false
+            menu.addItem(statusItem)
+
+            // Start Server button
+            let startItem = NSMenuItem(title: "Start Server", action: #selector(MenuActions.startServer), keyEquivalent: "")
+            startItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: nil)
+            startItem.target = MenuActions.shared
+            startItem.representedObject = paraManager
+            menu.addItem(startItem)
+
+            // Start Server with Tunnel button
+            let startTunnelItem = NSMenuItem(title: "Start Server with Tunnel", action: #selector(MenuActions.startServerWithTunnel), keyEquivalent: "")
+            startTunnelItem.image = NSImage(systemSymbolName: "network", accessibilityDescription: nil)
+            startTunnelItem.target = MenuActions.shared
+            startTunnelItem.representedObject = paraManager
+            menu.addItem(startTunnelItem)
+        }
+
+        // Server control actions (when running)
+        if paraManager.mcpServerRunning {
+            // Stop Server button
+            let stopItem = NSMenuItem(title: "Stop Server", action: #selector(MenuActions.stopServer), keyEquivalent: "")
+            stopItem.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: nil)
+            stopItem.target = MenuActions.shared
+            stopItem.representedObject = paraManager
+            menu.addItem(stopItem)
+
+            // View Logs button
+            let logsItem = NSMenuItem(title: "View Logs", action: #selector(MenuActions.viewServerLogs), keyEquivalent: "")
+            logsItem.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
+            logsItem.target = MenuActions.shared
+            logsItem.representedObject = paraManager
+            menu.addItem(logsItem)
+        }
+
+        // Separator after server status
+        menu.addItem(NSMenuItem.separator())
+    }
 }
 
 /// Actions for menu items
@@ -297,6 +382,86 @@ class MenuActions: NSObject {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    @objc func copyServerURL(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? String else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+    }
+
+    @objc func copyTunnelURL(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? String else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+    }
+
+    @objc func startServer(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let serverManager = ParaServerManager()
+            do {
+                _ = try serverManager.startServer(port: 8000, background: true, tunnel: .none)
+                DispatchQueue.main.async {
+                    paraManager.refreshServerStatus()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showError("Failed to start server: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    @objc func startServerWithTunnel(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let serverManager = ParaServerManager()
+            do {
+                _ = try serverManager.startServer(port: 8000, background: true, tunnel: .quick)
+                DispatchQueue.main.async {
+                    paraManager.refreshServerStatus()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showError("Failed to start server: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    @objc func stopServer(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let serverManager = ParaServerManager()
+            do {
+                try serverManager.stopServer()
+                DispatchQueue.main.async {
+                    paraManager.refreshServerStatus()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showError("Failed to stop server: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    @objc func viewServerLogs(_ sender: NSMenuItem) {
+        let serverManager = ParaServerManager()
+        let logPath = serverManager.getLogFilePath()
+
+        // Open log file in default text editor
+        if FileManager.default.fileExists(atPath: logPath) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
+        } else {
+            showError("Log file not found. The server may not have been started yet.")
+        }
     }
 
     private func showError(_ message: String) {

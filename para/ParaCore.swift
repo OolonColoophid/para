@@ -21,7 +21,7 @@ struct Para: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
         discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n  para terminal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -1282,6 +1282,246 @@ $PARA_HOME/
 - Environment commands help with setup validation
 - Directory command enables shell scripting integration
 """)
+        }
+    }
+
+    // MARK: - MCP Server Management Commands
+
+    struct ServerSetup: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-setup",
+            abstract: "Set up Para MCP server (install Python dependencies)"
+        )
+
+        @Flag(name: .long, help: "Set up permanent Cloudflare tunnel")
+        var tunnel = false
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            // Set up Python environment
+            do {
+                try serverManager.setupEnvironment()
+                Para.outputSuccess("MCP server environment set up successfully")
+
+                // Optionally set up tunnel
+                if tunnel {
+                    try serverManager.setupTunnel()
+                    Para.outputSuccess("Cloudflare tunnel configured")
+                }
+            } catch {
+                Para.outputError("Failed to set up MCP server: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct ServerStart: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-start",
+            abstract: "Start the Para MCP server with optional tunnel"
+        )
+
+        @Flag(name: .long, help: "Start with quick Cloudflare tunnel (temporary URL)")
+        var quickTunnel = false
+
+        @Flag(name: .long, help: "Start with permanent Cloudflare tunnel")
+        var tunnel = false
+
+        @Option(name: .long, help: "Server port (default: 8000)")
+        var port: Int = 8000
+
+        @Flag(name: .long, help: "Run server in background (daemonize)")
+        var background = false
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            // Check if environment is set up
+            guard serverManager.isEnvironmentSetup() else {
+                Para.outputError("MCP server not set up. Run 'para server-setup' first")
+                return
+            }
+
+            // Determine tunnel type
+            let tunnelType: TunnelType
+            if quickTunnel {
+                tunnelType = .quick
+            } else if tunnel {
+                tunnelType = .permanent
+            } else {
+                tunnelType = .none
+            }
+
+            // Start server
+            do {
+                let result = try serverManager.startServer(
+                    port: port,
+                    background: background,
+                    tunnel: tunnelType
+                )
+
+                var data: [String: Any] = [
+                    "serverURL": result.serverURL,
+                    "pid": result.pid,
+                    "port": result.port
+                ]
+
+                if let tunnelURL = result.tunnelURL {
+                    data["tunnelURL"] = tunnelURL
+                }
+
+                var message = "MCP server started on \(result.serverURL)"
+                if let tunnelURL = result.tunnelURL {
+                    message += "\nTunnel: \(tunnelURL)"
+                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
+                }
+
+                Para.outputSuccess(message, data: data)
+            } catch {
+                Para.outputError("Failed to start server: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct ServerStop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-stop",
+            abstract: "Stop the running Para MCP server"
+        )
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            do {
+                try serverManager.stopServer()
+                Para.outputSuccess("MCP server stopped")
+            } catch {
+                Para.outputError("Failed to stop server: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct ServerStatus: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-status",
+            abstract: "Check Para MCP server status"
+        )
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            if let status = serverManager.serverStatus() {
+                var data: [String: Any] = [
+                    "isRunning": status.isRunning
+                ]
+
+                if let pid = status.pid {
+                    data["pid"] = pid
+                }
+                if let serverURL = status.serverURL {
+                    data["serverURL"] = serverURL
+                }
+                if let tunnelURL = status.tunnelURL {
+                    data["tunnelURL"] = tunnelURL
+                }
+                if let uptime = status.uptime {
+                    data["uptime"] = uptime
+                }
+
+                if status.isRunning {
+                    var message = "MCP server is running"
+                    if let pid = status.pid {
+                        message += " (PID: \(pid))"
+                    }
+                    if let serverURL = status.serverURL {
+                        message += "\nServer: \(serverURL)"
+                    }
+                    if let tunnelURL = status.tunnelURL {
+                        message += "\nTunnel: \(tunnelURL)"
+                    }
+                    Para.outputSuccess(message, data: data)
+                } else {
+                    Para.outputSuccess("MCP server is not running", data: data)
+                }
+            }
+        }
+    }
+
+    struct ServerLogs: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-logs",
+            abstract: "Show Para MCP server logs"
+        )
+
+        @Flag(name: .long, help: "Follow log output")
+        var follow = false
+
+        @Option(name: .shortAndLong, help: "Number of log lines to show")
+        var lines: Int = 50
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+            let logPath = serverManager.getLogFilePath()
+
+            // Check if log file exists
+            guard FileManager.default.fileExists(atPath: logPath) else {
+                Para.outputError("Log file not found at: \(logPath)")
+                throw ParaError.invalidOperation("No logs available. Has the server been started?")
+            }
+
+            if follow {
+                // Use tail -f to follow logs in real-time
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
+                process.arguments = ["-f", "-n", String(lines), logPath]
+
+                // Inherit stdin/stdout/stderr to display output
+                process.standardOutput = FileHandle.standardOutput
+                process.standardError = FileHandle.standardError
+
+                print("Following logs (press Ctrl+C to stop)...\n")
+
+                try process.run()
+                process.waitUntilExit()
+            } else {
+                // Read and display last N lines
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
+                process.arguments = ["-n", String(lines), logPath]
+
+                let pipe = Pipe()
+                process.standardOutput = pipe
+
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    print(output)
+                } else {
+                    Para.outputError("Failed to read log file")
+                }
+            }
         }
     }
 }

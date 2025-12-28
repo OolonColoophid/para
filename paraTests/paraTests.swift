@@ -206,21 +206,26 @@ final class ParaBugFixTests: XCTestCase {
         let source = paraHome.appendingPathComponent("projects/\(projectName)")
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
 
-        // Expected fallback: ~/Documents/archive (NOT ~/Dropbox/para/archive)
-        let expectedDestination = "\(homeDir)/Documents/archive/\(projectName)"
+        // Expected fallback: ~/Dropbox/archive (from ParaSettings.effectiveParaArchive)
+        let expectedDestination = "\(homeDir)/Dropbox/archive/\(projectName)"
         let wrongDestination = "\(homeDir)/Dropbox/para/archive/\(projectName)"
+
+        // Clean up any existing test artifacts
+        try? FileManager.default.removeItem(atPath: expectedDestination)
+        try? FileManager.default.removeItem(atPath: wrongDestination)
+        try? FileManager.default.removeItem(at: source)
 
         // Create source project
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
         try "Archive test".write(to: source.appendingPathComponent("journal.org"), atomically: true, encoding: .utf8)
 
-        // Archive using getArchiveFolderPath (which returns nil) and fallback
-        let archivePath = ParaFileSystem.getArchiveFolderPath(name: projectName) ?? "\(homeDir)/Documents/archive/\(projectName)"
+        // Archive using getArchiveFolderPath (which uses effectiveParaArchive fallback)
+        let archivePath = ParaFileSystem.getArchiveFolderPath(name: projectName) ?? "\(homeDir)/Dropbox/archive/\(projectName)"
 
         try ParaFileSystem.moveToArchive(from: source.path, to: archivePath)
 
         // Verify archived to correct location
-        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedDestination), "Should archive to ~/Documents/archive")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedDestination), "Should archive to ~/Dropbox/archive")
         XCTAssertFalse(FileManager.default.fileExists(atPath: wrongDestination), "Should NOT archive to ~/Dropbox/para/archive")
 
         // Restore PARA_ARCHIVE for other tests
