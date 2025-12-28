@@ -200,7 +200,7 @@ When started with `--quick-tunnel`, the server will output a public URL that you
 🚀 Starting Para MCP Server...
 🌐 Server: http://localhost:8000
 🔗 Tunnel: https://abc-def.trycloudflare.com
-📋 Add to Poke: https://abc-def.trycloudflare.com/sse
+📋 Add to Poke: https://abc-def.trycloudflare.com/mcp
 ```
 
 #### Check Status
@@ -238,12 +238,12 @@ Once the server is running, you can connect it to AI assistants that support MCP
 
 1. **With Poke (Browser Extension)**:
    - Install the [Poke extension](https://poke.new)
-   - Add the MCP endpoint: `http://localhost:8000/sse` (or the tunnel URL + `/sse` if using `--quick-tunnel`)
+   - Add the MCP endpoint: `http://localhost:8000/mcp` (or the tunnel URL + `/mcp` if using `--quick-tunnel`)
    - The assistant can now interact with your PARA system
 
 2. **With Claude Desktop**:
    - Configure the MCP server in Claude Desktop settings
-   - Point to `http://localhost:8000/sse`
+   - Point to `http://localhost:8000/mcp`
 
 3. **Remote Access**:
    - Use `para server-start --quick-tunnel` for temporary public URL
@@ -280,7 +280,7 @@ The menu automatically updates every 2-3 seconds to reflect the current server s
 The MCP server is a Python application located in `para-mcp/` that uses:
 - Python MCP SDK for protocol implementation
 - Uvicorn for HTTP transport
-- Server-Sent Events (SSE) transport (`/sse` endpoint)
+- Streamable HTTP transport (`/mcp` endpoint)
 
 The Para CLI manages the server lifecycle through Swift's `Foundation.Process` API, handling:
 - Virtual environment creation

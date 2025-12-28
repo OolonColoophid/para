@@ -1928,7 +1928,7 @@ $PARA_HOME/
                 var message = "Server started at \(result.serverURL)"
                 if let tunnelURL = result.tunnelURL {
                     message += "\nTunnel: \(tunnelURL)"
-                    message += "\nAdd to Poke: \(tunnelURL)/sse"
+                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
                 }
 
                 Para.outputSuccess(message, data: data)
@@ -1984,7 +1984,7 @@ $PARA_HOME/
                 var message = "Server started at \(result.serverURL)"
                 if let tunnelURL = result.tunnelURL {
                     message += "\nTunnel: \(tunnelURL)"
-                    message += "\nAdd to Poke: \(tunnelURL)/sse"
+                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
                 }
 
                 Para.outputSuccess(message, data: data)
