@@ -36,6 +36,7 @@ struct Para: ParsableCommand {
           read            Read a project/area journal file
           headings        List headings from a project/area journal
           search          Search for text with context (fast!)
+          agenda          Export org-mode agenda view
           environment     Show current PARA environment settings
           version         Show Para version information
           ai-overview     Generate AI overview of projects/areas
@@ -54,6 +55,8 @@ struct Para: ParsableCommand {
           para archive area guitar
           para search projects "TODO"
           para search project myProject "meeting notes"
+          para agenda --days 7 --format text
+          para agenda --project myProject --json
           para server-start-quick-tunnel
           para server-status --json
 
@@ -64,7 +67,7 @@ struct Para: ParsableCommand {
 
         For AI usage, add --json flag for machine-readable output.
         """,
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -1165,6 +1168,116 @@ extension Para {
                     }
                 }
             }
+        }
+    }
+
+    struct Agenda: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "agenda",
+            abstract: "Export org-mode agenda from Para projects/areas",
+            usage: """
+            para agenda [options]
+
+            Options:
+              --days N            Number of days (default: 7)
+              --project NAME      Limit to specific project
+              --area NAME         Limit to specific area
+              --scope SCOPE       Scope: projects, areas, all (default: all)
+              --format FORMAT     Output: json or text (default: json)
+            """
+        )
+
+        @Option(name: .long, help: "Number of days in agenda view")
+        var days: Int = 7
+
+        @Option(name: .long, help: "Limit to specific project")
+        var project: String?
+
+        @Option(name: .long, help: "Limit to specific area")
+        var area: String?
+
+        @Option(name: .long, help: "Scope: projects, areas, or all")
+        var scope: String = "all"
+
+        @Option(name: .long, help: "Output format: json or text")
+        var format: String = "json"
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            // Find the export-agenda.sh script
+            let scriptPath = findAgendaScript()
+
+            guard FileManager.default.fileExists(atPath: scriptPath) else {
+                Para.outputError("Agenda export script not found at: \(scriptPath)")
+                return
+            }
+
+            // Build command arguments
+            var args = [scriptPath, "--days", String(days)]
+
+            if let project = project {
+                args.append(contentsOf: ["--project", project])
+            } else if let area = area {
+                args.append(contentsOf: ["--area", area])
+            } else {
+                args.append(contentsOf: ["--scope", scope])
+            }
+
+            // Always output JSON for --json mode, otherwise use specified format
+            let outputFormat = ParaGlobals.jsonMode ? "json" : format
+            args.append(contentsOf: ["--format", outputFormat])
+            args.append("--stdout")
+
+            // Execute the script
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = args
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                guard process.terminationStatus == 0 else {
+                    Para.outputError("Agenda export failed with exit code \(process.terminationStatus)")
+                    return
+                }
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    print(output)
+                }
+            } catch {
+                Para.outputError("Failed to run agenda export: \(error.localizedDescription)")
+            }
+        }
+
+        private func findAgendaScript() -> String {
+            // Try multiple locations
+            let candidates = [
+                // Relative to executable (development)
+                Bundle.main.bundlePath + "/../../../para-mcp/scripts/export-agenda.sh",
+                // Installed location
+                "/usr/local/share/para/scripts/export-agenda.sh",
+                // Fallback
+                ParaEnvironment.paraHome + "/../para-mcp/scripts/export-agenda.sh"
+            ]
+
+            for candidate in candidates {
+                let expanded = (candidate as NSString).expandingTildeInPath
+                if FileManager.default.fileExists(atPath: expanded) {
+                    return expanded
+                }
+            }
+
+            // Default location
+            return (candidates[0] as NSString).expandingTildeInPath
         }
     }
 

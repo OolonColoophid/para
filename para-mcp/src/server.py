@@ -178,6 +178,34 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="para_agenda",
+            description="Export org-mode agenda from Para projects and areas. Shows TODOs, deadlines, and scheduled items.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days in agenda view (default: 7 for weekly view)",
+                        "default": 7
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": "Limit agenda to specific project name"
+                    },
+                    "area": {
+                        "type": "string",
+                        "description": "Limit agenda to specific area name"
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["projects", "areas", "all"],
+                        "description": "Scope: 'projects', 'areas', or 'all' (default: all)",
+                        "default": "all"
+                    }
+                }
+            }
+        ),
+        Tool(
             name="para_environment",
             description="Display environment configuration and validate Para setup (PARA_HOME, PARA_ARCHIVE, etc.).",
             inputSchema={
@@ -353,6 +381,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             return await handle_headings(arguments)
         elif name == "para_search":
             return await handle_search(arguments)
+        elif name == "para_agenda":
+            return await handle_agenda(arguments)
         elif name == "para_environment":
             return await handle_environment(arguments)
         elif name == "para_version":
@@ -443,6 +473,28 @@ async def handle_search(args: Dict[str, Any]) -> List[TextContent]:
 
     if case_sensitive:
         cmd_args.append("--case-sensitive")
+
+    result = run_para_command(cmd_args)
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+async def handle_agenda(args: Dict[str, Any]) -> List[TextContent]:
+    """Export org-mode agenda"""
+    days = args.get("days", 7)
+    project = args.get("project")
+    area = args.get("area")
+    scope = args.get("scope", "all")
+
+    # Build command arguments
+    cmd_args = ["agenda", "--days", str(days)]
+
+    # Handle project/area specific vs scope
+    if project:
+        cmd_args.extend(["--project", project])
+    elif area:
+        cmd_args.extend(["--area", area])
+    else:
+        cmd_args.extend(["--scope", scope])
 
     result = run_para_command(cmd_args)
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
