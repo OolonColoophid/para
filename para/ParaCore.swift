@@ -20,8 +20,48 @@ struct Para: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
-        discussion: "Examples:\n  para create project roofBuild\n  para archive area guitar\n  para delete project roofBuild\n  para reveal project roofBuild\n  para terminal project roofBuild\n \nThe directory for projects etc. should be specified in $PARA_HOME. Archives will be placed in $PARA_HOME/archive unless you specify a different folder in $PARA_ARCHIVE\n\nFor AI usage, add --json flag for machine-readable output.",
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        discussion: """
+        PARA MANAGEMENT COMMANDS:
+          create          Create a new project or area
+          archive         Move a project or area to the archive
+          delete          Delete a project or area
+          list            List all projects or areas
+          open            Open a project/area journal in default editor
+          reveal          Reveal a project/area in Finder
+          terminal        Open a terminal in project/area directory
+
+        INFORMATION COMMANDS:
+          directory       Show PARA home directory path
+          path            Show path to a project/area/resource
+          read            Read a project/area journal file
+          headings        List headings from a project/area journal
+          environment     Show current PARA environment settings
+          version         Show Para version information
+          ai-overview     Generate AI overview of projects/areas
+
+        MCP SERVER COMMANDS:
+          server-setup                    Set up Python MCP server environment
+          server-start                    Start MCP server (local only)
+          server-start-quick-tunnel       Start with temporary Cloudflare tunnel
+          server-start-permanent-tunnel   Start with permanent Cloudflare tunnel
+          server-stop                     Stop the running MCP server
+          server-status                   Check MCP server status
+          server-logs                     View MCP server logs
+
+        EXAMPLES:
+          para create project roofBuild
+          para archive area guitar
+          para server-start-quick-tunnel
+          para server-status --json
+
+        ENVIRONMENT:
+          PARA_HOME     - Directory for projects and areas
+          PARA_ARCHIVE  - Archive directory (default: ~/Dropbox/archive)
+          PARA_MCP_DIR  - MCP server directory (optional override)
+
+        For AI usage, add --json flag for machine-readable output.
+        """,
+        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Environment.self, Version.self, AIOverview.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -1365,10 +1405,10 @@ $PARA_HOME/
         }
     }
 
-    struct ServerStartTunnel: ParsableCommand {
+    struct ServerStartQuickTunnel: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "server-start-tunnel",
-            abstract: "Start the Para MCP server with quick Cloudflare tunnel"
+            commandName: "server-start-quick-tunnel",
+            abstract: "Start the Para MCP server with quick Cloudflare tunnel (temporary URL)"
         )
 
         @Option(name: .long, help: "Server port (default: 8000)")
@@ -1393,6 +1433,62 @@ $PARA_HOME/
                     port: port,
                     background: true,
                     tunnel: .quick
+                )
+
+                // Small delay to let server start before printing
+                usleep(500000) // 0.5 second
+
+                var data: [String: Any] = [
+                    "serverURL": result.serverURL,
+                    "pid": result.pid,
+                    "port": result.port
+                ]
+
+                if let tunnelURL = result.tunnelURL {
+                    data["tunnelURL"] = tunnelURL
+                }
+
+                var message = "Server started at \(result.serverURL)"
+                if let tunnelURL = result.tunnelURL {
+                    message += "\nTunnel: \(tunnelURL)"
+                    message += "\nAdd to Poke: \(tunnelURL)/mcp"
+                }
+
+                Para.outputSuccess(message, data: data)
+            } catch {
+                Para.outputError("Failed to start server: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct ServerStartPermanentTunnel: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "server-start-permanent-tunnel",
+            abstract: "Start the Para MCP server with permanent Cloudflare tunnel (requires setup)"
+        )
+
+        @Option(name: .long, help: "Server port (default: 8000)")
+        var port: Int = 8000
+
+        @OptionGroup var globalOptions: Para
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            let serverManager = ParaServerManager()
+
+            // Check if environment is set up
+            guard serverManager.isEnvironmentSetup() else {
+                Para.outputError("MCP server not set up. Run 'para server-setup' first")
+                return
+            }
+
+            // Start server with permanent tunnel (always in background)
+            do {
+                let result = try serverManager.startServer(
+                    port: port,
+                    background: true,
+                    tunnel: .permanent
                 )
 
                 // Small delay to let server start before printing
