@@ -625,6 +625,7 @@ async def main():
 
         async def handle_sse(request):
             """Handle SSE connection for MCP"""
+            from starlette.responses import Response
             async with sse.connect_sse(
                 request.scope,
                 request.receive,
@@ -635,6 +636,7 @@ async def main():
                     streams[1],
                     app.create_initialization_options()
                 )
+            return Response()
 
         # Create Starlette app with SSE routes
         starlette_app = Starlette(
