@@ -3,7 +3,39 @@
 [![Swift](https://img.shields.io/badge/Swift-5.6-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Para is a command line tool designed to help you manage your personal productivity system based on the PARA (Projects, Areas, Resources, Archives) method. It works in an Emacs context, in that new files are created in [Org mode](https://orgmode.org) format. The PARA method is a framework for organizing your digital life and enhancing your productivity.
+Para is a command line tool designed to help you manage your personal productivity system based on the **PARA method**. It works with [Org mode](https://orgmode.org) files and is ideal for Emacs users who want a fast way to organize their work.
+
+## What is PARA?
+
+PARA is a simple organizational system created by Tiago Forte with four categories:
+
+- **Projects**: Short-term efforts with a defined end goal (e.g., "Launch website", "Plan vacation")
+- **Areas**: Ongoing responsibilities without an end date (e.g., "Health", "Finances", "Guitar practice")
+- **Resources**: Reference materials and topics of interest (e.g., "Recipes", "Code snippets")
+- **Archives**: Inactive items from the other categories
+
+Para helps you manage the Projects and Areas portions of this system from the command line.
+
+## Quick Start
+
+```bash
+# Install para
+git clone https://github.com/OolonColoophid/para.git
+cd para
+./install.sh
+
+# Set up your PARA folders (add to ~/.zshrc or ~/.bashrc)
+export PARA_HOME=~/Documents/PARA
+export PARA_ARCHIVE=~/Documents/Archive
+
+# Create the directories
+mkdir -p $PARA_HOME/projects $PARA_HOME/areas $PARA_ARCHIVE
+
+# Start using para
+para create project my-first-project
+para list
+para open project my-first-project
+```
 
 ## Features
 
@@ -168,7 +200,7 @@ When started with `--quick-tunnel`, the server will output a public URL that you
 🚀 Starting Para MCP Server...
 🌐 Server: http://localhost:8000
 🔗 Tunnel: https://abc-def.trycloudflare.com
-📋 Add to Poke: https://abc-def.trycloudflare.com/mcp
+📋 Add to Poke: https://abc-def.trycloudflare.com/sse
 ```
 
 #### Check Status
@@ -206,12 +238,12 @@ Once the server is running, you can connect it to AI assistants that support MCP
 
 1. **With Poke (Browser Extension)**:
    - Install the [Poke extension](https://poke.new)
-   - Add the MCP endpoint: `http://localhost:8000/mcp` (or the tunnel URL if using `--quick-tunnel`)
+   - Add the MCP endpoint: `http://localhost:8000/sse` (or the tunnel URL + `/sse` if using `--quick-tunnel`)
    - The assistant can now interact with your PARA system
 
 2. **With Claude Desktop**:
    - Configure the MCP server in Claude Desktop settings
-   - Point to `http://localhost:8000/mcp`
+   - Point to `http://localhost:8000/sse`
 
 3. **Remote Access**:
    - Use `para server-start --quick-tunnel` for temporary public URL
@@ -248,7 +280,7 @@ The menu automatically updates every 2-3 seconds to reflect the current server s
 The MCP server is a Python application located in `para-mcp/` that uses:
 - Python MCP SDK for protocol implementation
 - Uvicorn for HTTP transport
-- Streamable HTTP transport (`/mcp` endpoint)
+- Server-Sent Events (SSE) transport (`/sse` endpoint)
 
 The Para CLI manages the server lifecycle through Swift's `Foundation.Process` API, handling:
 - Virtual environment creation

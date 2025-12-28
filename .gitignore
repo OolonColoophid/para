@@ -115,3 +115,12 @@ para-mcp/**/__pycache__/
 para-mcp/*.egg-info/
 para-mcp/.coverage
 para-mcp/htmlcov/
+para-mcp/.tunnel.log
+para-mcp/.tunnel.pid
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Claude Code IDE
+.claude/

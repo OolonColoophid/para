@@ -646,9 +646,11 @@ async def main():
         )
 
         import uvicorn
-        logger.info(f"Server listening on http://0.0.0.0:{port}")
-        logger.info(f"SSE endpoint: http://0.0.0.0:{port}/sse")
-        config = uvicorn.Config(starlette_app, host="0.0.0.0", port=port, log_level="info")
+        # Default to localhost for security; use BIND_ALL_INTERFACES=true to allow LAN access
+        bind_host = "0.0.0.0" if os.environ.get("BIND_ALL_INTERFACES") else "127.0.0.1"
+        logger.info(f"Server listening on http://{bind_host}:{port}")
+        logger.info(f"SSE endpoint: http://{bind_host}:{port}/sse")
+        config = uvicorn.Config(starlette_app, host=bind_host, port=port, log_level="info")
         server = uvicorn.Server(config)
         await server.serve()
     else:
