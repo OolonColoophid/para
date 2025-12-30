@@ -1,0 +1,3 @@
+[submodule "para-mcp/lib/mcp-cloudflare-kit"]
+	path = para-mcp/lib/mcp-cloudflare-kit
+	url = /Users/ianuser/repos/mcp-cloudflare-kit
