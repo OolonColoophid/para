@@ -10,18 +10,73 @@ import Foundation
 /// File system operations for PARA items
 public struct ParaFileSystem {
 
+    // MARK: - Name Validation (Security)
+
+    /// Validate a project/area name to prevent path traversal attacks
+    /// - Returns: true if name is safe, false otherwise
+    public static func isValidName(_ name: String) -> Bool {
+        // Reject empty names
+        guard !name.isEmpty else { return false }
+
+        // Reject names containing path traversal sequences
+        if name.contains("..") || name.contains("/") || name.contains("\\") {
+            return false
+        }
+
+        // Reject names that are just dots
+        if name == "." {
+            return false
+        }
+
+        // Allow alphanumeric, dashes, underscores, spaces, and common punctuation
+        let allowedCharacters = CharacterSet.alphanumerics
+            .union(CharacterSet(charactersIn: "-_. "))
+        let nameCharacters = CharacterSet(charactersIn: name)
+
+        return allowedCharacters.isSuperset(of: nameCharacters)
+    }
+
+    /// Sanitize a name by removing unsafe characters
+    /// - Returns: sanitized name or nil if completely invalid
+    public static func sanitizeName(_ name: String) -> String? {
+        // Remove path traversal sequences
+        var sanitized = name
+            .replacingOccurrences(of: "..", with: "")
+            .replacingOccurrences(of: "/", with: "")
+            .replacingOccurrences(of: "\\", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If nothing left after sanitization, return nil
+        if sanitized.isEmpty {
+            return nil
+        }
+
+        return sanitized
+    }
+
     // MARK: - Path Helpers
 
     /// Get the full path for a PARA folder
+    /// - Note: Validates name to prevent path traversal attacks
     public static func getParaFolderPath(type: String, name: String) -> String {
+        // Security: validate name to prevent path traversal
+        let safeName = isValidName(name) ? name : (sanitizeName(name) ?? "invalid")
+
         let paraHome = ParaEnvironment.paraHome
-        return "\(paraHome)/\(type)s/\(name)"
+        return "\(paraHome)/\(type)s/\(safeName)"
     }
 
     /// Get the archive path for an item
+    /// - Note: Validates name to prevent path traversal attacks
     public static func getArchiveFolderPath(name: String) -> String? {
+        // Security: validate name to prevent path traversal
+        guard isValidName(name) || sanitizeName(name) != nil else {
+            return nil
+        }
+        let safeName = isValidName(name) ? name : sanitizeName(name)!
+
         let archivePath = ParaEnvironment.paraArchive
-        return "\(archivePath)/\(name)"
+        return "\(archivePath)/\(safeName)"
     }
 
     // MARK: - File Content

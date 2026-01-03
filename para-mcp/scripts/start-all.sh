@@ -33,7 +33,7 @@ else
     echo ""
 
     # Create session with first window for MCP server
-    tmux new-session -d -s $SESSION -n "mcp-server" "cd $(pwd) && ./start-server.sh"
+    tmux new-session -d -s $SESSION -n "mcp-server" "cd $(pwd) && ./start-server-http.sh"
 
     # Create second window for tunnel
     tmux new-window -t $SESSION -n "tunnel" "cd $(pwd) && ./start-tunnel.sh"

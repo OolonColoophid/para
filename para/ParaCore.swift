@@ -2060,6 +2060,11 @@ $PARA_HOME/
                 return
             }
 
+            // Provide feedback since tunnel startup takes a few seconds
+            if !ParaGlobals.jsonMode {
+                print("Starting MCP server with quick tunnel...")
+            }
+
             // Start server with quick tunnel (always in background)
             do {
                 let result = try serverManager.startServer(
@@ -2068,7 +2073,7 @@ $PARA_HOME/
                     tunnel: .quick
                 )
 
-                // Small delay to let server start before printing
+                // Small delay to let server stabilize before printing
                 usleep(500000) // 0.5 second
 
                 var data: [String: Any] = [
@@ -2116,6 +2121,11 @@ $PARA_HOME/
                 return
             }
 
+            // Provide feedback since tunnel startup takes a few seconds
+            if !ParaGlobals.jsonMode {
+                print("Starting MCP server with permanent tunnel...")
+            }
+
             // Start server with permanent tunnel (always in background)
             do {
                 let result = try serverManager.startServer(
@@ -2124,7 +2134,7 @@ $PARA_HOME/
                     tunnel: .permanent
                 )
 
-                // Small delay to let server start before printing
+                // Small delay to let server stabilize before printing
                 usleep(500000) // 0.5 second
 
                 var data: [String: Any] = [

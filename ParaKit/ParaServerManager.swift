@@ -7,13 +7,29 @@
 
 import Foundation
 
-/// Manages the Para MCP server lifecycle
+/// Manages the Para MCP server lifecycle via launchd
 public class ParaServerManager {
 
     private let mcpDirectory: String
-    private let pidFilePath: String
     private let logFilePath: String
+    private let tunnelLogFilePath: String
     private let tunnelFilePath: String
+
+    // launchd service identifiers
+    private let serverServiceLabel = "com.para.mcp-server"
+    private let tunnelServiceLabel = "com.para.cloudflare-tunnel"
+
+    private var launchAgentsDir: String {
+        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/LaunchAgents"
+    }
+
+    private var serverPlistPath: String {
+        "\(launchAgentsDir)/\(serverServiceLabel).plist"
+    }
+
+    private var tunnelPlistPath: String {
+        "\(launchAgentsDir)/\(tunnelServiceLabel).plist"
+    }
 
     /// Initialize with MCP directory path
     public init() {
@@ -48,18 +64,24 @@ public class ParaServerManager {
         // Find the first valid directory with venv
         var foundDirectory: String?
         for candidate in candidates {
-            let venvPath = "\(candidate)/venv"
+            // Standardize the path to resolve any .. components
+            let standardizedPath = URL(fileURLWithPath: candidate).standardized.path
+            let venvPath = "\(standardizedPath)/venv"
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: venvPath, isDirectory: &isDirectory) && isDirectory.boolValue {
-                foundDirectory = candidate
+                foundDirectory = standardizedPath
                 break
             }
         }
 
-        // Use found directory or fallback to first candidate
-        self.mcpDirectory = foundDirectory ?? candidates[0]
-        self.pidFilePath = "\(mcpDirectory)/.server.pid"
+        // Use found directory or fallback to first candidate (also standardized)
+        if let found = foundDirectory {
+            self.mcpDirectory = found
+        } else {
+            self.mcpDirectory = URL(fileURLWithPath: candidates[0]).standardized.path
+        }
         self.logFilePath = "\(mcpDirectory)/.server.log"
+        self.tunnelLogFilePath = "\(mcpDirectory)/.tunnel.log"
         self.tunnelFilePath = "\(mcpDirectory)/.tunnel.url"
     }
 
@@ -113,7 +135,7 @@ public class ParaServerManager {
 
     // MARK: - Server Control
 
-    /// Start the MCP server
+    /// Start the MCP server via launchd
     public func startServer(
         port: Int = 8000,
         background: Bool = false,
@@ -129,96 +151,148 @@ public class ParaServerManager {
             throw ParaServerError.environmentNotSetup
         }
 
-        // Start Python server process
-        let process = try runPythonServer(port: port, background: background)
+        // Ensure plist is installed
+        guard FileManager.default.fileExists(atPath: serverPlistPath) else {
+            throw ParaServerError.launchdPlistNotInstalled
+        }
 
-        // Save PID
-        try savePID(process.processIdentifier)
+        // Load the launchd service
+        try runLaunchctl(["load", serverPlistPath])
+
+        // Wait briefly for server to start
+        usleep(500000) // 500ms
 
         // Start tunnel if requested
         var tunnelURL: String? = nil
         if tunnel != .none {
             tunnelURL = try startTunnel(type: tunnel)
-            // Save tunnel URL to file
             if let url = tunnelURL {
                 try saveTunnelURL(url)
             }
-        } else {
-            // Clear any existing tunnel URL file
-            try? FileManager.default.removeItem(atPath: tunnelFilePath)
         }
 
         let serverURL = "http://localhost:\(port)"
+        let pid = getServicePID(serverServiceLabel) ?? 0
 
         return ServerStartResult(
             serverURL: serverURL,
             tunnelURL: tunnelURL,
-            pid: process.processIdentifier,
+            pid: pid,
             port: port
         )
     }
 
-    /// Stop the MCP server
+    /// Stop the MCP server via launchd
     public func stopServer() throws {
-        guard let pid = readPID() else {
+        let status = serverStatus()
+        guard status?.isRunning == true else {
             throw ParaServerError.serverNotRunning
         }
 
-        // Stop tunnel process first
-        stopTunnelProcess()
+        // Stop tunnel first
+        stopTunnel()
 
-        // Send SIGTERM for graceful shutdown
-        kill(pid, SIGTERM)
+        // Unload the launchd service
+        try runLaunchctl(["unload", serverPlistPath])
 
-        // Wait up to 5 seconds for process to exit
-        var attempts = 0
-        while attempts < 50 {
-            if kill(pid, 0) != 0 {
-                // Process no longer exists
-                break
-            }
-            usleep(100000) // 100ms
-            attempts += 1
-        }
-
-        // If still running, force kill
-        if kill(pid, 0) == 0 {
-            kill(pid, SIGKILL)
-        }
-
-        // Clean up PID file and tunnel URL file
-        try? FileManager.default.removeItem(atPath: pidFilePath)
+        // Clean up tunnel URL file
         try? FileManager.default.removeItem(atPath: tunnelFilePath)
     }
 
-    /// Get current server status
+    /// Get current server status by checking launchd
     public func serverStatus() -> ServerStatus? {
-        guard let pid = readPID() else {
-            return ServerStatus(isRunning: false, pid: nil, serverURL: nil, tunnelURL: nil, uptime: nil)
-        }
-
-        // Check if process is actually running
-        let isRunning = kill(pid, 0) == 0
+        let pid = getServicePID(serverServiceLabel)
+        let isRunning = pid != nil && pid! > 0
 
         if !isRunning {
-            // Clean up stale PID file
-            try? FileManager.default.removeItem(atPath: pidFilePath)
             return ServerStatus(isRunning: false, pid: nil, serverURL: nil, tunnelURL: nil, uptime: nil)
         }
 
-        // Try to read port from environment or use default
         let serverURL = "http://localhost:8000"
-
-        // Read tunnel URL if it exists
-        let tunnelURL = readTunnelURL()
+        let tunnelURL = readTunnelURL() ?? getTunnelURLFromConfig()
 
         return ServerStatus(
             isRunning: true,
             pid: pid,
             serverURL: serverURL,
             tunnelURL: tunnelURL,
-            uptime: nil // TODO: Calculate uptime from process start time
+            uptime: nil
         )
+    }
+
+    // MARK: - Launchd Helpers
+
+    /// Run a launchctl command
+    private func runLaunchctl(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        // launchctl returns 0 on success, but also returns 0 for some "not running" cases
+        // We check the output for actual errors
+    }
+
+    /// Get the PID of a launchd service
+    private func getServicePID(_ label: String) -> Int32? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["list"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
+
+            // Parse launchctl list output: PID\tStatus\tLabel
+            for line in output.components(separatedBy: "\n") {
+                if line.contains(label) {
+                    let parts = line.split(separator: "\t")
+                    if parts.count >= 1, let pid = Int32(parts[0]), pid > 0 {
+                        return pid
+                    }
+                }
+            }
+        } catch {}
+
+        return nil
+    }
+
+    /// Check if tunnel service is running
+    public func isTunnelRunning() -> Bool {
+        let pid = getServicePID(tunnelServiceLabel)
+        return pid != nil && pid! > 0
+    }
+
+    /// Get tunnel URL from cloudflared config
+    private func getTunnelURLFromConfig() -> String? {
+        let configPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.cloudflared/config.yml"
+        guard let content = try? String(contentsOfFile: configPath) else { return nil }
+
+        // Look for hostname: line
+        for line in content.components(separatedBy: "\n") {
+            if line.contains("hostname:") {
+                let hostname = line.replacingOccurrences(of: "hostname:", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+                if !hostname.isEmpty {
+                    return "https://\(hostname)"
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: - Tunnel Management
@@ -237,7 +311,7 @@ public class ParaServerManager {
         }
     }
 
-    /// Start Cloudflare tunnel
+    /// Start Cloudflare tunnel via launchd
     private func startTunnel(type: TunnelType) throws -> String {
         switch type {
         case .quick:
@@ -249,7 +323,7 @@ public class ParaServerManager {
         }
     }
 
-    /// Start a quick Cloudflare tunnel (no setup required)
+    /// Start a quick Cloudflare tunnel (no setup required) - runs directly, not via launchd
     private func startQuickTunnel() throws -> String {
         // Find cloudflared
         guard let cloudflaredPath = findCloudflared() else {
@@ -276,7 +350,7 @@ public class ParaServerManager {
 
         try process.run()
 
-        // Save tunnel PID for cleanup
+        // Save tunnel PID for cleanup (quick tunnels still use PID file)
         try saveTunnelPID(process.processIdentifier)
 
         // Wait for URL to appear in log file
@@ -304,32 +378,36 @@ public class ParaServerManager {
         return url
     }
 
-    /// Start a permanent Cloudflare tunnel (requires setup)
+    /// Start a permanent Cloudflare tunnel via launchd
     private func startPermanentTunnel() throws -> String {
-        let script = "\(mcpDirectory)/scripts/start-tunnel.sh"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: script)
-        process.currentDirectoryURL = URL(fileURLWithPath: mcpDirectory)
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            throw ParaServerError.tunnelSetupFailed
+        // Ensure plist is installed
+        guard FileManager.default.fileExists(atPath: tunnelPlistPath) else {
+            throw ParaServerError.launchdPlistNotInstalled
         }
 
-        // Read configured tunnel URL from config or output
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        if let output = String(data: data, encoding: .utf8),
-           let range = output.range(of: "https://[a-zA-Z0-9.-]+", options: .regularExpression) {
-            return String(output[range])
+        // Load the launchd service
+        try runLaunchctl(["load", tunnelPlistPath])
+
+        // Wait briefly for tunnel to connect
+        usleep(2000000) // 2 seconds
+
+        // Get URL from config
+        guard let url = getTunnelURLFromConfig() else {
+            throw ParaServerError.tunnelURLNotFound
         }
 
-        throw ParaServerError.tunnelURLNotFound
+        return url
+    }
+
+    /// Stop the tunnel (via launchd for permanent, PID for quick)
+    public func stopTunnel() {
+        // Try launchd first (permanent tunnel)
+        if isTunnelRunning() {
+            try? runLaunchctl(["unload", tunnelPlistPath])
+        }
+
+        // Also check for quick tunnel PID
+        stopQuickTunnelProcess()
     }
 
     private func findCloudflared() -> String? {
@@ -377,7 +455,8 @@ public class ParaServerManager {
         return Int32(content.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    private func stopTunnelProcess() {
+    /// Stop quick tunnel by PID
+    private func stopQuickTunnelProcess() {
         guard let pid = readTunnelPID() else { return }
 
         // Send SIGTERM
@@ -402,39 +481,7 @@ public class ParaServerManager {
         try? FileManager.default.removeItem(atPath: tunnelPidFilePath)
     }
 
-    // MARK: - Process Management
-
-    private func runPythonServer(port: Int, background: Bool) throws -> Process {
-        let pythonPath = "\(mcpDirectory)/venv/bin/python"
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: pythonPath)
-        process.arguments = ["-m", "src.server"]
-        process.currentDirectoryURL = URL(fileURLWithPath: mcpDirectory)
-
-        // Set environment variables
-        var env = ProcessInfo.processInfo.environment
-        env["PARA_HOME"] = ParaEnvironment.paraHome
-        env["PARA_ARCHIVE"] = ParaEnvironment.archivePath
-        env["USE_HTTP"] = "true"
-        env["PORT"] = String(port)
-        process.environment = env
-
-        if background {
-            // Create or truncate log file
-            FileManager.default.createFile(atPath: logFilePath, contents: nil, attributes: nil)
-
-            // Redirect output to log file
-            if let logFileHandle = FileHandle(forWritingAtPath: logFilePath) {
-                process.standardOutput = logFileHandle
-                process.standardError = logFileHandle
-            }
-        }
-
-        try process.run()
-
-        return process
-    }
+    // MARK: - Helper Methods
 
     private func findPython() -> String? {
         let pythonCandidates = ["python3.10", "python3.11", "python3.12", "python3"]
@@ -463,15 +510,6 @@ public class ParaServerManager {
         }
 
         return nil
-    }
-
-    private func savePID(_ pid: Int32) throws {
-        try String(pid).write(toFile: pidFilePath, atomically: true, encoding: .utf8)
-    }
-
-    private func readPID() -> Int32? {
-        guard let content = try? String(contentsOfFile: pidFilePath) else { return nil }
-        return Int32(content.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func saveTunnelURL(_ url: String) throws {
@@ -518,6 +556,7 @@ public enum ParaServerError: Error, LocalizedError {
     case tunnelSetupFailed
     case cloudflaredNotFound
     case tunnelURLNotFound
+    case launchdPlistNotInstalled
 
     public var errorDescription: String? {
         switch self {
@@ -539,6 +578,8 @@ public enum ParaServerError: Error, LocalizedError {
             return "cloudflared not found. Install with: brew install cloudflared"
         case .tunnelURLNotFound:
             return "Failed to get tunnel URL from cloudflared. Check your network connection."
+        case .launchdPlistNotInstalled:
+            return "LaunchAgent plist not installed. Run 'para server-setup' first."
         }
     }
 }

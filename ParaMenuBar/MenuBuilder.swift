@@ -113,8 +113,8 @@ struct MenuBuilder {
         settingsItem.representedObject = paraManager
         menu.addItem(settingsItem)
 
-        // Refresh
-        let refreshItem = NSMenuItem(title: "Refresh", action: #selector(MenuActions.refresh), keyEquivalent: "r")
+        // Refresh Files
+        let refreshItem = NSMenuItem(title: "Refresh Files", action: #selector(MenuActions.refreshFiles), keyEquivalent: "r")
         refreshItem.target = MenuActions.shared
         refreshItem.representedObject = paraManager
         menu.addItem(refreshItem)
@@ -216,19 +216,21 @@ struct MenuBuilder {
             statusItem.isEnabled = false
             menu.addItem(statusItem)
 
-            // Local server URL
+            // Local server URL (click to open in browser)
             if let serverURL = paraManager.mcpServerURL {
-                let localItem = NSMenuItem(title: "   Local: \(serverURL)", action: #selector(MenuActions.copyServerURL), keyEquivalent: "")
+                let localItem = NSMenuItem(title: "   Local Server: \(serverURL)", action: #selector(MenuActions.openServerURL), keyEquivalent: "")
                 localItem.target = MenuActions.shared
                 localItem.representedObject = serverURL
+                localItem.toolTip = "Click to open local server in browser"
                 menu.addItem(localItem)
             }
 
-            // Tunnel URL (if available)
+            // Tunnel URL (click to open in browser)
             if let tunnelURL = paraManager.mcpTunnelURL {
-                let tunnelItem = NSMenuItem(title: "   Tunnel: \(tunnelURL)", action: #selector(MenuActions.copyTunnelURL), keyEquivalent: "")
+                let tunnelItem = NSMenuItem(title: "   Public Tunnel: \(tunnelURL)", action: #selector(MenuActions.openTunnelURL), keyEquivalent: "")
                 tunnelItem.target = MenuActions.shared
                 tunnelItem.representedObject = tunnelURL
+                tunnelItem.toolTip = "Click to open public tunnel URL in browser"
                 menu.addItem(tunnelItem)
             }
         } else {
@@ -351,7 +353,7 @@ class MenuActions: NSObject {
         paraManager.revealPath(ParaEnvironment.archivePath)
     }
 
-    @objc func refresh(_ sender: NSMenuItem) {
+    @objc func refreshFiles(_ sender: NSMenuItem) {
         guard let paraManager = sender.representedObject as? ParaManager else { return }
         paraManager.refresh()
     }
@@ -404,18 +406,16 @@ class MenuActions: NSObject {
         alert.runModal()
     }
 
-    @objc func copyServerURL(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? String else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(url, forType: .string)
+    @objc func openServerURL(_ sender: NSMenuItem) {
+        guard let urlString = sender.representedObject as? String,
+              let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
     }
 
-    @objc func copyTunnelURL(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? String else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(url, forType: .string)
+    @objc func openTunnelURL(_ sender: NSMenuItem) {
+        guard let urlString = sender.representedObject as? String,
+              let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @objc func startServer(_ sender: NSMenuItem) {

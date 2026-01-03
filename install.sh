@@ -205,10 +205,7 @@ done
 
 if [[ "$SIGNED" == false ]]; then
     echo "   ⚠️  Could not sign binaries with any available identity"
-    echo "   The binaries may be blocked by Gatekeeper on other machines"
-    echo "   Consider running: xattr -d com.apple.quarantine /usr/local/bin/para"
-    echo "   and: xattr -d com.apple.quarantine \"/Applications/$APP_BUNDLE\""
-    echo "   after installation to remove quarantine attributes"
+    echo "   Will attempt ad-hoc signing after installation"
 fi
 
 # Check if we need sudo for installation
@@ -229,10 +226,13 @@ $SUDO_CMD chmod +x "$INSTALL_DIR/$BINARY_NAME"
 echo "📦 Installing Para Menu Bar App..."
 $SUDO_CMD cp -R "$APP_DIR" "/Applications/"
 
-# Remove quarantine attributes to prevent Gatekeeper issues
-echo "🧹 Removing quarantine attributes..."
-$SUDO_CMD xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
-$SUDO_CMD xattr -dr com.apple.quarantine "/Applications/$APP_BUNDLE" 2>/dev/null || true
+# Clear extended attributes and re-sign after installation
+# This is required on macOS 15+ (Sequoia/Tahoe) where Gatekeeper is stricter
+echo "🧹 Clearing extended attributes and re-signing..."
+$SUDO_CMD xattr -cr "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+$SUDO_CMD xattr -cr "/Applications/$APP_BUNDLE" 2>/dev/null || true
+$SUDO_CMD codesign --force --sign - "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+$SUDO_CMD codesign --force --deep --sign - "/Applications/$APP_BUNDLE" 2>/dev/null || true
 
 # Verify installation
 if [ -x "$INSTALL_DIR/$BINARY_NAME" ] && [ -d "/Applications/$APP_BUNDLE" ]; then

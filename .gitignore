@@ -99,6 +99,13 @@ iOSInjectionProject/
 # End of https://www.toptal.com/developers/gitignore/api/objective-c,macos
 .aider*
 
+# Environment files (secrets)
+.env
+.env.*
+*.env
+para-mcp/.env
+para-mcp/.env.*
+
 # Python / MCP Server
 para-mcp/venv/
 para-mcp/__pycache__/
