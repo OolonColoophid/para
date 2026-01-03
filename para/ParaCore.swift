@@ -22,19 +22,20 @@ struct Para: ParsableCommand {
         abstract: "A utility for managing a local PARA organization system.",
         discussion: """
         PARA MANAGEMENT COMMANDS:
-          create          Create a new project or area
-          archive         Move a project or area to the archive
-          delete          Delete a project or area
-          list            List all projects or areas
-          open            Open a project/area journal in default editor
-          reveal          Reveal a project/area in Finder
-          terminal        Open a terminal in project/area directory
+          create          Create a new project, area, or resource
+          archive         Move a project, area, or resource to the archive
+          delete          Delete a project, area, or resource
+          migrate         Change item type (e.g., project to area)
+          list            List all projects, areas, and resources
+          open            Open a project/area/resource in default editor
+          reveal          Reveal a project/area/resource in Finder
+          terminal        Open a terminal in project/area/resource directory
 
         INFORMATION COMMANDS:
-          directory       Show PARA home directory path
+          directory       Show directory path for item
           path            Show path to a project/area/resource
-          read            Read a project/area journal file
-          headings        List headings from a project/area journal
+          read            Read a project/area/resource file
+          headings        List headings from a project/area/resource
           search          Search for text with context (fast!)
           agenda          Export org-mode agenda view
           environment     Show current PARA environment settings
@@ -52,22 +53,22 @@ struct Para: ParsableCommand {
 
         EXAMPLES:
           para create project roofBuild
+          para create resource dates
           para archive area guitar
+          para migrate project oldProject area
           para search projects "TODO"
-          para search project myProject "meeting notes"
+          para search resource dates "birthday"
           para agenda --days 7 --format text
-          para agenda --project myProject --json
           para server-start-quick-tunnel
-          para server-status --json
 
         ENVIRONMENT:
-          PARA_HOME     - Directory for projects and areas
+          PARA_HOME     - Directory for projects, areas, and resources
           PARA_ARCHIVE  - Archive directory (default: ~/Dropbox/archive)
           PARA_MCP_DIR  - MCP server directory (optional override)
 
         For AI usage, add --json flag for machine-readable output.
         """,
-        subcommands: [Create.self, Archive.self, Delete.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, Doctor.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
+        subcommands: [Create.self, Archive.self, Delete.self, Migrate.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, Doctor.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
     )
     
     @Flag(help: "Output results in JSON format (recommended for AI/programmatic use)")
@@ -131,18 +132,18 @@ extension Para {
 
 // MARK: Make changes
 extension Para {
-    enum FolderType: String, ExpressibleByArgument, Decodable {
-        case project, area
+    enum FolderType: String, ExpressibleByArgument, Decodable, CaseIterable {
+        case project, area, resource
     }
 
     /// Extended path types that include special PARA locations
     enum PathType: String, ExpressibleByArgument, CaseIterable {
-        case project, area, resources, archive, home
+        case project, area, resource, resources, archive, home
 
         /// Returns true if this type requires a name argument
         var requiresName: Bool {
             switch self {
-            case .project, .area:
+            case .project, .area, .resource:
                 return true
             case .resources, .archive, .home:
                 return false
@@ -213,11 +214,11 @@ extension Para {
 
     struct Create: ParsableCommand {
         static var configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Create a new project or area",
-            usage: "para create <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Create a new project, area, or resource",
+            usage: "para create <project|area|resource> <name>"
         )
-        @Argument(help: "Type of folder to create (project or area)",
-                  completion: CompletionKind.list(["project", "area"]))
+        @Argument(help: "Type of folder to create (project, area, or resource)",
+                  completion: CompletionKind.list(["project", "area", "resource"]))
         var type: FolderType // Changed to Enum
         @Argument(help: "Name of the folder") var name: String
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
@@ -257,13 +258,13 @@ extension Para {
 
     struct Archive: ParsableCommand {
         static var configuration = CommandConfiguration(
-            abstract: "[project|area] <name> — Archive a project or area",
-            usage: "para archive [project|area] <name>"
+            abstract: "[project|area|resource] <name> — Archive a project, area, or resource",
+            usage: "para archive [project|area|resource] <name>"
         )
 
         @Argument(
-            help: "Type of folder to archive (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder to archive (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType?
 
@@ -275,10 +276,13 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
-                    // If no type is specified, show both
+                    // If no type is specified, show all
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -297,17 +301,19 @@ extension Para {
                 folderType = specifiedType.rawValue
                 archiveFolder(type: folderType, name: name)
             } else {
-                // Try to find the folder in either projects or areas
+                // Try to find the folder in projects, areas, or resources
                 if ParaFileSystem.folderExists(type: "project", name: name) {
                     archiveFolder(type: "project", name: name)
                 } else if ParaFileSystem.folderExists(type: "area", name: name) {
                     archiveFolder(type: "area", name: name)
+                } else if ParaFileSystem.folderExists(type: "resource", name: name) {
+                    archiveFolder(type: "resource", name: name)
                 } else {
-                    Para.outputError("Could not find '\(name)' in either projects or areas")
+                    Para.outputError("Could not find '\(name)' in projects, areas, or resources")
                 }
             }
         }
-        
+
         func archiveFolder(type: String, name: String) {
             let fromPath: String = ParaFileSystem.getParaFolderPath(type: type, name: name)
             let homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
@@ -332,13 +338,13 @@ extension Para {
 
     struct Delete: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "[project|area] <name> — Delete a project or area",
-            usage: "para delete [project|area] <name>"
+            abstract: "[project|area|resource] <name> — Delete a project, area, or resource",
+            usage: "para delete [project|area|resource] <name>"
         )
 
         @Argument(
-            help: "Type of folder to delete (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder to delete (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType?        
 
@@ -350,10 +356,13 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
-                    // If no type is specified, show both
+                    // If no type is specified, show all
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -369,17 +378,19 @@ extension Para {
                 // Use the specified type
                 deleteFolder(type: specifiedType.rawValue, name: name)
             } else {
-                // Try to find the folder in either projects or areas
+                // Try to find the folder in projects, areas, or resources
                 if ParaFileSystem.folderExists(type: "project", name: name) {
                     deleteFolder(type: "project", name: name)
                 } else if ParaFileSystem.folderExists(type: "area", name: name) {
                     deleteFolder(type: "area", name: name)
+                } else if ParaFileSystem.folderExists(type: "resource", name: name) {
+                    deleteFolder(type: "resource", name: name)
                 } else {
-                    Para.outputError("Could not find '\(name)' in either projects or areas")
+                    Para.outputError("Could not find '\(name)' in projects, areas, or resources")
                 }
             }
         }
-        
+
         func deleteFolder(type: String, name: String) {
             let folderPath = ParaFileSystem.getParaFolderPath(type: type, name: name)
             // Use expandedPath directly in the deleteDirectory call
@@ -397,15 +408,130 @@ extension Para {
         }
     }
 
-    struct List: ParsableCommand {
-        static var configuration = CommandConfiguration(
-            abstract: "[project|area] — List projects and/or areas",
-            usage: "para list [project|area]"
+    struct Migrate: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "<from-type> <name> <to-type> — Change item type (e.g., project to area)",
+            usage: "para migrate <project|area|resource> <name> <project|area|resource>",
+            discussion: """
+            Migrate an item from one type to another.
+
+            Examples:
+              para migrate project myProject area       # Convert project to area
+              para migrate area myArea resource         # Convert area to resource
+              para migrate resource dates area          # Convert resource to area
+
+            This command:
+              - Moves the folder to the new type's directory
+              - Converts journal.org <-> readme.org as needed
+            """
         )
 
         @Argument(
-            help: "Type of folder to list (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Current type of the item",
+            completion: CompletionKind.list(["project", "area", "resource"])
+        )
+        var fromType: FolderType
+
+        @Argument(
+            help: "Name of the item to migrate",
+            completion: CompletionKind.custom { _, _, _ in
+                var items: [String] = []
+                if CommandLine.arguments.contains("project") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                } else if CommandLine.arguments.contains("area") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
+                } else {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
+                }
+                return items
+            }
+        )
+        var name: String
+
+        @Argument(
+            help: "New type for the item",
+            completion: CompletionKind.list(["project", "area", "resource"])
+        )
+        var toType: FolderType
+
+        @OptionGroup var globalOptions: Para
+
+        func validate() throws {
+            if fromType == toType {
+                throw ValidationError("Source and destination types must be different")
+            }
+        }
+
+        func run() throws {
+            ParaGlobals.jsonMode = globalOptions.json
+
+            // Check source exists
+            guard ParaFileSystem.folderExists(type: fromType.rawValue, name: name) else {
+                Para.outputError("\(fromType.rawValue.capitalized) '\(name)' not found")
+                return
+            }
+
+            let fromPath = ParaFileSystem.getParaFolderPath(type: fromType.rawValue, name: name)
+            let toPath = ParaFileSystem.getParaFolderPath(type: toType.rawValue, name: name)
+
+            // Check destination doesn't exist
+            guard !ParaFileSystem.folderExists(type: toType.rawValue, name: name) else {
+                Para.outputError("\(toType.rawValue.capitalized) '\(name)' already exists")
+                return
+            }
+
+            do {
+                // Move the folder
+                try FileManager.default.moveItem(atPath: fromPath, toPath: toPath)
+
+                // Handle file conversion
+                let fromIsResource = fromType == .resource
+                let toIsResource = toType == .resource
+
+                if fromIsResource && !toIsResource {
+                    // Converting from resource: rename readme.org to journal.org
+                    let readmePath = "\(toPath)/readme.org"
+                    let journalPath = "\(toPath)/journal.org"
+                    if FileManager.default.fileExists(atPath: readmePath) {
+                        try FileManager.default.moveItem(atPath: readmePath, toPath: journalPath)
+                    }
+                } else if !fromIsResource && toIsResource {
+                    // Converting to resource: rename journal.org to readme.org
+                    let journalPath = "\(toPath)/journal.org"
+                    let readmePath = "\(toPath)/readme.org"
+                    if FileManager.default.fileExists(atPath: journalPath) {
+                        try FileManager.default.moveItem(atPath: journalPath, toPath: readmePath)
+                    }
+                }
+
+                let data: [String: Any] = [
+                    "name": name,
+                    "fromType": fromType.rawValue,
+                    "toType": toType.rawValue,
+                    "fromPath": fromPath,
+                    "toPath": toPath
+                ]
+
+                Para.outputSuccess("Migrated '\(name)' from \(fromType.rawValue) to \(toType.rawValue)", data: data)
+            } catch {
+                Para.outputError("Failed to migrate '\(name)': \(error.localizedDescription)")
+            }
+        }
+    }
+
+    struct List: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "[project|area|resource] — List projects, areas, and/or resources",
+            usage: "para list [project|area|resource]"
+        )
+
+        @Argument(
+            help: "Type of folder to list (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType?
         
@@ -421,7 +547,7 @@ extension Para {
         }
         
         func outputJSONList() {
-            let types = type?.rawValue != nil ? [type!.rawValue] : ["project", "area"]
+            let types = type?.rawValue != nil ? [type!.rawValue] : ["project", "area", "resource"]
             var result: [String: Any] = [:]
             
             for folderType in types {
@@ -450,10 +576,12 @@ extension Para {
                 // List only the specified type
                 listFoldersByType(specifiedType.rawValue)
             } else {
-                // List both projects and areas
+                // List projects, areas, and resources
                 listFoldersByType("project")
                 print("") // Empty line for separation
                 listFoldersByType("area")
+                print("") // Empty line for separation
+                listFoldersByType("resource")
             }
         }
         
@@ -479,13 +607,13 @@ extension Para {
 
     struct Open: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Open journal.org file",
-            usage: "para open <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Open main file (journal.org or readme.org)",
+            usage: "para open <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder to open (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder to open (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -497,9 +625,12 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -513,11 +644,13 @@ extension Para {
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
             let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
-            let journalPath = "\(folderPath)/journal.org"
+            // Resources use readme.org, projects/areas use journal.org
+            let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
+            let mainFileName = type == .resource ? "readme.org" : "journal.org"
 
-            // Open the journal.org file (only in human mode)
+            // Open the main file (only in human mode)
             if !ParaGlobals.jsonMode {
-                let url = URL(fileURLWithPath: journalPath)
+                let url = URL(fileURLWithPath: mainFilePath)
                 NSWorkspace.shared.open(url)
             }
 
@@ -525,23 +658,23 @@ extension Para {
                 "type": type.rawValue,
                 "name": name,
                 "path": folderPath,
-                "journalPath": journalPath,
+                "journalPath": mainFilePath,
                 "opened": !ParaGlobals.jsonMode
             ]
 
-            Para.outputSuccess("Opened journal.org for \(type.rawValue): \(name)", data: data)
+            Para.outputSuccess("Opened \(mainFileName) for \(type.rawValue): \(name)", data: data)
         }
     }
 
     struct Reveal: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Open folder in Finder",
-            usage: "para reveal <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Open folder in Finder",
+            usage: "para reveal <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder to reveal (project or area)",
-            completion: .list(["project", "area"])
+            help: "Type of folder to reveal (project, area, or resource)",
+            completion: .list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -553,10 +686,13 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
-                    // If no type is specified, show both
+                    // If no type is specified, show all
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -595,13 +731,13 @@ extension Para {
 
     struct Terminal: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Open folder in terminal app",
-            usage: "para terminal <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Open folder in terminal app",
+            usage: "para terminal <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder to open (project or area)",
-            completion: .list(["project", "area"])
+            help: "Type of folder to open (project, area, or resource)",
+            completion: .list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -613,9 +749,12 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -721,13 +860,13 @@ extension Para {
 
     struct Directory: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Return directory path",
-            usage: "para directory <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Return directory path",
+            usage: "para directory <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -739,9 +878,12 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -794,8 +936,8 @@ extension Para {
         )
 
         @Argument(
-            help: "Type of path (project, area, resources, archive, home)",
-            completion: CompletionKind.list(["project", "area", "resources", "archive", "home"])
+            help: "Type of path (project, area, resource, resources, archive, home)",
+            completion: CompletionKind.list(["project", "area", "resource", "resources", "archive", "home"])
         )
         var type: PathType
 
@@ -807,6 +949,9 @@ extension Para {
                 }
                 if CommandLine.arguments.contains("area") {
                     return ParaFileSystem.completeFolders(type: "area")
+                }
+                if CommandLine.arguments.contains("resource") {
+                    return ParaFileSystem.completeFolders(type: "resource")
                 }
                 return []
             }
@@ -845,6 +990,9 @@ extension Para {
             case .area:
                 path = "\(paraHome)/areas/\(name!)"
                 pathType = "area"
+            case .resource:
+                path = "\(paraHome)/resources/\(name!)"
+                pathType = "resource"
             }
 
             // Check if the path exists
@@ -870,13 +1018,13 @@ extension Para {
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Read journal.org file",
-            usage: "para read <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Read main file (journal.org or readme.org)",
+            usage: "para read <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -888,9 +1036,12 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -902,22 +1053,23 @@ extension Para {
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
             let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
-            let journalPath = "\(folderPath)/journal.org"
+            // Resources use readme.org, projects/areas use journal.org
+            let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
 
             // Check if the file exists
-            guard FileManager.default.fileExists(atPath: journalPath) else {
-                Para.outputError("Journal file not found for \(type.rawValue) '\(name)'")
+            guard FileManager.default.fileExists(atPath: mainFilePath) else {
+                Para.outputError("Main file not found for \(type.rawValue) '\(name)'")
                 return
             }
-            
+
             do {
-                let content = try String(contentsOfFile: journalPath, encoding: .utf8)
-                
+                let content = try String(contentsOfFile: mainFilePath, encoding: .utf8)
+
                 if ParaGlobals.jsonMode {
                     let data: [String: Any] = [
                         "type": type.rawValue,
                         "name": name,
-                        "journalPath": journalPath,
+                        "journalPath": mainFilePath,
                         "content": content,
                         "lineCount": content.components(separatedBy: .newlines).count
                     ]
@@ -926,20 +1078,20 @@ extension Para {
                     print(content)
                 }
             } catch {
-                Para.outputError("Failed to read journal file: \(error.localizedDescription)")
+                Para.outputError("Failed to read file: \(error.localizedDescription)")
             }
         }
     }
-    
+
     struct Headings: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "<project|area> <name> — Show org-mode headings",
-            usage: "para headings <project|area> <name>"
+            abstract: "<project|area|resource> <name> — Show org-mode headings",
+            usage: "para headings <project|area|resource> <name>"
         )
 
         @Argument(
-            help: "Type of folder (project or area)",
-            completion: CompletionKind.list(["project", "area"])
+            help: "Type of folder (project, area, or resource)",
+            completion: CompletionKind.list(["project", "area", "resource"])
         )
         var type: FolderType
 
@@ -951,9 +1103,12 @@ extension Para {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                 } else if CommandLine.arguments.contains("area") {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                } else if CommandLine.arguments.contains("resource") {
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 } else {
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
                     items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
+                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
                 }
                 return items
             }
@@ -965,28 +1120,29 @@ extension Para {
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
             let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
-            let journalPath = "\(folderPath)/journal.org"
-            
+            // Resources use readme.org, projects/areas use journal.org
+            let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
+
             // Check if the file exists
-            guard FileManager.default.fileExists(atPath: journalPath) else {
-                Para.outputError("Journal file not found for \(type.rawValue) '\(name)'")
+            guard FileManager.default.fileExists(atPath: mainFilePath) else {
+                Para.outputError("Main file not found for \(type.rawValue) '\(name)'")
                 return
             }
-            
+
             do {
-                let content = try String(contentsOfFile: journalPath, encoding: .utf8)
+                let content = try String(contentsOfFile: mainFilePath, encoding: .utf8)
                 let lines = content.components(separatedBy: .newlines)
-                
+
                 // Filter lines that start with '* ' (org-mode headings)
                 let headings = lines.filter { line in
                     line.hasPrefix("* ")
                 }
-                
+
                 if ParaGlobals.jsonMode {
                     let data: [String: Any] = [
                         "type": type.rawValue,
                         "name": name,
-                        "journalPath": journalPath,
+                        "journalPath": mainFilePath,
                         "headings": headings,
                         "headingCount": headings.count
                     ]

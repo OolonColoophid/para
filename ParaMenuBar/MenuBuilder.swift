@@ -49,14 +49,21 @@ struct MenuBuilder {
             menu.addItem(item)
         }
 
-        // Resources (if exists)
-        if paraManager.hasResources {
-            menu.addItem(NSMenuItem.separator())
-            let resourcesItem = NSMenuItem(title: "Resources", action: #selector(MenuActions.revealResources), keyEquivalent: "")
-            resourcesItem.image = NSImage(systemSymbolName: "books.vertical.fill", accessibilityDescription: nil)
-            resourcesItem.target = MenuActions.shared
-            resourcesItem.representedObject = paraManager
-            menu.addItem(resourcesItem)
+        // Resources section
+        if !paraManager.resources.isEmpty {
+            let resourcesSubmenu = buildSubmenu(
+                title: "Resources",
+                symbolName: "books.vertical.fill",
+                items: paraManager.resources,
+                paraManager: paraManager
+            )
+            menu.addItem(resourcesSubmenu)
+        } else if paraManager.hasResources {
+            // Resources folder exists but no items
+            let item = NSMenuItem(title: "Resources (none)", action: nil, keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "books.vertical", accessibilityDescription: nil)
+            item.isEnabled = false
+            menu.addItem(item)
         }
 
         // Archive (if exists)
@@ -84,6 +91,13 @@ struct MenuBuilder {
         newAreaItem.target = MenuActions.shared
         newAreaItem.representedObject = paraManager
         menu.addItem(newAreaItem)
+
+        // New Resource
+        let newResourceItem = NSMenuItem(title: "New Resource...", action: #selector(MenuActions.newResource), keyEquivalent: "")
+        newResourceItem.image = NSImage(systemSymbolName: "books.vertical.fill", accessibilityDescription: nil)
+        newResourceItem.target = MenuActions.shared
+        newResourceItem.representedObject = paraManager
+        menu.addItem(newResourceItem)
 
         // Separator
         menu.addItem(NSMenuItem.separator())
@@ -139,8 +153,9 @@ struct MenuBuilder {
             itemMenu.addItem(NSMenuItem.separator())
         }
 
-        // Open Journal
-        let openItem = NSMenuItem(title: "Open Journal", action: #selector(MenuActions.openJournal), keyEquivalent: "")
+        // Open main file (Journal for projects/areas, Readme for resources)
+        let openTitle = item.type == .resource ? "Open Readme" : "Open Journal"
+        let openItem = NSMenuItem(title: openTitle, action: #selector(MenuActions.openJournal), keyEquivalent: "")
         openItem.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
         openItem.target = MenuActions.shared
         openItem.representedObject = (paraManager, item)
@@ -349,6 +364,11 @@ class MenuActions: NSObject {
     @objc func newArea(_ sender: NSMenuItem) {
         guard let paraManager = sender.representedObject as? ParaManager else { return }
         NewItemWindowController.shared.showNewItem(type: .area, paraManager: paraManager)
+    }
+
+    @objc func newResource(_ sender: NSMenuItem) {
+        guard let paraManager = sender.representedObject as? ParaManager else { return }
+        NewItemWindowController.shared.showNewItem(type: .resource, paraManager: paraManager)
     }
 
     @objc func showSettings(_ sender: NSMenuItem) {

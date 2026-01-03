@@ -17,6 +17,7 @@ public class ParaManager: ObservableObject {
 
     @Published public private(set) var projects: [ParaItem] = []
     @Published public private(set) var areas: [ParaItem] = []
+    @Published public private(set) var resources: [ParaItem] = []
     @Published public private(set) var hasResources: Bool = false
     @Published public private(set) var hasArchive: Bool = false
 
@@ -41,6 +42,7 @@ public class ParaManager: ObservableObject {
     public func refresh() {
         projects = loadItems(type: .project)
         areas = loadItems(type: .area)
+        resources = loadItems(type: .resource)
         hasResources = ParaFileSystem.directoryExists(at: ParaEnvironment.resourcesPath)
         hasArchive = ParaFileSystem.directoryExists(at: ParaEnvironment.archivePath)
     }
@@ -53,7 +55,8 @@ public class ParaManager: ObservableObject {
 
         return folders.compactMap { name in
             let path = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
-            let journalPath = "\(path)/journal.org"
+            // Resources use readme.org, projects/areas use journal.org
+            let mainFilePath = type == .resource ? "\(path)/readme.org" : "\(path)/journal.org"
             let description = ParaFileSystem.getItemDescription(type: type.rawValue, name: name)
 
             return ParaItem(
@@ -61,17 +64,17 @@ public class ParaManager: ObservableObject {
                 type: type,
                 path: path,
                 description: description,
-                journalPath: journalPath
+                journalPath: mainFilePath
             )
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     // MARK: - Create
 
-    /// Create a new project or area
+    /// Create a new project, area, or resource
     public func createItem(type: ParaItemType, name: String, description: String? = nil, open: Bool = false) throws -> ParaItem {
-        guard type == .project || type == .area else {
-            throw ParaError.invalidOperation("Can only create projects and areas")
+        guard type == .project || type == .area || type == .resource else {
+            throw ParaError.invalidOperation("Can only create projects, areas, and resources")
         }
 
         let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
@@ -79,34 +82,46 @@ public class ParaManager: ObservableObject {
         // Create the folder
         try ParaFileSystem.createFolder(at: folderPath)
 
-        // Create journal.org file with template
-        let journalPath = "\(folderPath)/journal.org"
-        var journalContent = """
-        #+TITLE: \(name)
-        #+CATEGORY: \(name)
-        """
+        // Create the main file - journal.org for projects/areas, readme.org for resources
+        let mainFilePath: String
+        let mainFileContent: String
 
-        if let desc = description, !desc.isEmpty {
-            journalContent += "\n#+DESCRIPTION: \(desc)"
+        if type == .resource {
+            mainFilePath = "\(folderPath)/readme.org"
+            var content = "#+TITLE: \(name)\n"
+            if let desc = description, !desc.isEmpty {
+                content += "#+DESCRIPTION: \(desc)\n"
+            }
+            content += "\nThis resource contains reference material about \(name).\n"
+            mainFileContent = content
+        } else {
+            mainFilePath = "\(folderPath)/journal.org"
+            var content = """
+            #+TITLE: \(name)
+            #+CATEGORY: \(name)
+            """
+            if let desc = description, !desc.isEmpty {
+                content += "\n#+DESCRIPTION: \(desc)"
+            }
+            content += """
+
+
+            * Notes
+
+
+            """
+            mainFileContent = content
         }
 
-        journalContent += """
-
-
-        * Notes
-
-
-        """
-
-        try ParaFileSystem.createFile(at: journalPath, content: journalContent)
+        try ParaFileSystem.createFile(at: mainFilePath, content: mainFileContent)
 
         // Create the ParaItem
         let item = ParaItem(
             name: name,
             type: type,
             path: folderPath,
-            description: nil,
-            journalPath: journalPath
+            description: description,
+            journalPath: mainFilePath
         )
 
         // Open if requested

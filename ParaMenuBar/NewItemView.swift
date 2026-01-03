@@ -2,7 +2,7 @@
 //  NewItemView.swift
 //  ParaMenuBar
 //
-//  Dialog for creating new projects and areas.
+//  Dialog for creating new projects, areas, and resources.
 //
 
 import SwiftUI
@@ -20,14 +20,28 @@ struct NewItemView: View {
     @FocusState private var isNameFocused: Bool
 
     private var typeName: String {
-        itemType == .project ? "Project" : "Area"
+        switch itemType {
+        case .project: return "Project"
+        case .area: return "Area"
+        case .resource: return "Resource"
+        default: return "Item"
+        }
+    }
+
+    private var typeIcon: String {
+        switch itemType {
+        case .project: return "folder.badge.plus"
+        case .area: return "hexagon.fill"
+        case .resource: return "books.vertical.fill"
+        default: return "doc.badge.plus"
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 4) {
-                Image(systemName: itemType == .project ? "folder.badge.plus" : "hexagon.fill")
+                Image(systemName: typeIcon)
                     .font(.system(size: 40))
                     .foregroundColor(.accentColor)
                 Text("New \(typeName)")
@@ -137,7 +151,14 @@ class NewItemWindowController: NSObject {
         let hostingController = NSHostingController(rootView: view)
 
         let newWindow = NSWindow(contentViewController: hostingController)
-        newWindow.title = "New \(type == .project ? "Project" : "Area")"
+        let typeTitle: String
+        switch type {
+        case .project: typeTitle = "Project"
+        case .area: typeTitle = "Area"
+        case .resource: typeTitle = "Resource"
+        default: typeTitle = "Item"
+        }
+        newWindow.title = "New \(typeTitle)"
         newWindow.styleMask = [.titled, .closable]
         newWindow.center()
         newWindow.isReleasedWhenClosed = false
