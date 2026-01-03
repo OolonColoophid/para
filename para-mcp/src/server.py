@@ -38,14 +38,14 @@ para = CLIWrapper(
 
 @server.tool(
     name="para_list",
-    description="List all projects and/or areas in your PARA system. Optionally filter by type.",
+    description="List all projects, areas, and/or resources in your PARA system. Optionally filter by type.",
     schema={
         "type": "object",
         "properties": {
             "type": {
                 "type": "string",
-                "enum": ["project", "area", "all"],
-                "description": "Filter by type: 'project', 'area', or 'all' (default: all)",
+                "enum": ["project", "area", "resource", "all"],
+                "description": "Filter by type: 'project', 'area', 'resource', or 'all' (default: all)",
                 "default": "all"
             }
         }
@@ -60,12 +60,12 @@ async def para_list(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_read",
-    description="Read the entire journal.org file content for a specific project or area.",
+    description="Read the main org file content for a project, area, or resource. Projects/areas use journal.org, resources use readme.org.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type of item: 'project' or 'area'"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type of item: 'project', 'area', or 'resource'"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -77,12 +77,12 @@ async def para_read(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_headings",
-    description="Extract org-mode headings (* ...) from the journal file of a project or area.",
+    description="Extract org-mode headings (* ...) from the main file of a project, area, or resource.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type of item: 'project' or 'area'"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type of item: 'project', 'area', or 'resource'"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -100,10 +100,10 @@ async def para_headings(args: Dict[str, Any]) -> str:
         "properties": {
             "scope": {
                 "type": "string",
-                "enum": ["project", "area", "projects", "areas", "resources", "archive", "all"],
+                "enum": ["project", "area", "resource", "projects", "areas", "resources", "archive", "all"],
                 "description": "Search scope"
             },
-            "name": {"type": "string", "description": "Name of project/area (required when scope is 'project' or 'area')"},
+            "name": {"type": "string", "description": "Name of project/area/resource (required when scope is 'project', 'area', or 'resource')"},
             "query": {"type": "string", "description": "Search query text"},
             "context": {"type": "integer", "description": "Context lines before/after (default: 2)", "default": 2},
             "caseSensitive": {"type": "boolean", "description": "Case-sensitive search (default: false)", "default": False}
@@ -115,7 +115,7 @@ async def para_search(args: Dict[str, Any]) -> str:
     scope = args["scope"]
     cmd_args = ["search", scope]
 
-    if scope in ["project", "area"]:
+    if scope in ["project", "area", "resource"]:
         if "name" not in args:
             return json.dumps({"error": f"'name' is required when scope is '{scope}'"}, indent=2)
         cmd_args.append(args["name"])
@@ -190,12 +190,12 @@ async def para_ai_overview(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_directory",
-    description="Get the absolute directory path for a specific project or area.",
+    description="Get the absolute directory path for a specific project, area, or resource.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type of item"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type of item"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -207,19 +207,19 @@ async def para_directory(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_path",
-    description="Get PARA system paths (home, resources, archive, or path to a specific project/area).",
+    description="Get PARA system paths (home, resources, archive, or path to a specific project/area/resource).",
     schema={
         "type": "object",
         "properties": {
-            "location": {"type": "string", "enum": ["home", "resources", "archive", "project", "area"], "description": "Location type"},
-            "name": {"type": "string", "description": "Name (required if location is 'project' or 'area')"}
+            "location": {"type": "string", "enum": ["home", "resources", "archive", "project", "area", "resource"], "description": "Location type"},
+            "name": {"type": "string", "description": "Name (required if location is 'project', 'area', or 'resource')"}
         },
         "required": ["location"]
     }
 )
 async def para_path(args: Dict[str, Any]) -> str:
     location = args["location"]
-    if location in ["project", "area"]:
+    if location in ["project", "area", "resource"]:
         if "name" not in args:
             return json.dumps({"error": f"'name' is required when location is '{location}'"}, indent=2)
         result = await para.run(["path", location, args["name"]])
@@ -232,12 +232,12 @@ async def para_path(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_create",
-    description="Create a new project or area in your PARA system.",
+    description="Create a new project, area, or resource in your PARA system.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type to create"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type to create"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -249,12 +249,12 @@ async def para_create(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_archive",
-    description="Archive a completed project or area by moving it to PARA_ARCHIVE.",
+    description="Archive a completed project, area, or resource by moving it to PARA_ARCHIVE.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type to archive"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type to archive"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -266,12 +266,12 @@ async def para_archive(args: Dict[str, Any]) -> str:
 
 @server.tool(
     name="para_delete",
-    description="Permanently delete a project or area. This action cannot be undone.",
+    description="Permanently delete a project, area, or resource. This action cannot be undone.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type to delete"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type to delete"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
@@ -281,36 +281,57 @@ async def para_delete(args: Dict[str, Any]) -> str:
     return json.dumps(result, indent=2)
 
 
+@server.tool(
+    name="para_migrate",
+    description="Migrate an item from one type to another (e.g., project to area, area to resource).",
+    schema={
+        "type": "object",
+        "properties": {
+            "from_type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Current type of the item"},
+            "name": {"type": "string", "description": "Name of the item to migrate"},
+            "to_type": {"type": "string", "enum": ["project", "area", "resource"], "description": "New type for the item"}
+        },
+        "required": ["from_type", "name", "to_type"]
+    }
+)
+async def para_migrate(args: Dict[str, Any]) -> str:
+    result = await para.run(["migrate", args["from_type"], args["name"], args["to_type"]])
+    return json.dumps(result, indent=2)
+
+
 # Metadata tools
 
 @server.tool(
     name="para_open",
-    description="Get the path to the journal.org file for a project or area.",
+    description="Get the path to the main org file for a project, area, or resource.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type of item"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type of item"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
 )
 async def para_open(args: Dict[str, Any]) -> str:
-    result = await para.run(["directory", args["type"], args["name"]])
+    item_type = args["type"]
+    result = await para.run(["directory", item_type, args["name"]])
     if isinstance(result, dict) and "path" in result:
-        result["journalPath"] = f"{result['path']}/journal.org"
+        # Resources use readme.org, projects/areas use journal.org
+        main_file = "readme.org" if item_type == "resource" else "journal.org"
+        result["mainFilePath"] = f"{result['path']}/{main_file}"
         result["note"] = "In server context, this returns the path. Use a client to actually open the file."
     return json.dumps(result, indent=2)
 
 
 @server.tool(
     name="para_reveal",
-    description="Get the directory path for a project or area.",
+    description="Get the directory path for a project, area, or resource.",
     schema={
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": ["project", "area"], "description": "Type of item"},
-            "name": {"type": "string", "description": "Name of the project or area"}
+            "type": {"type": "string", "enum": ["project", "area", "resource"], "description": "Type of item"},
+            "name": {"type": "string", "description": "Name of the project, area, or resource"}
         },
         "required": ["type", "name"]
     }
