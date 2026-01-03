@@ -15,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "PARA_BUILD_NUMBER"
-    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
+    static let buildNumber: String = "51"
+    static let buildTimestamp: String = "2026-01-03 17:41:53 UTC"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",

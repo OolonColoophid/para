@@ -10,8 +10,8 @@ import Foundation
 /// Version information for Para
 public struct ParaVersion {
     public static let version: String = "0.1"
-    public static let buildNumber: String = "PARA_BUILD_NUMBER"
-    public static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
+    public static let buildNumber: String = "51"
+    public static let buildTimestamp: String = "2026-01-03 17:41:53 UTC"
 
     /// Formatted version string
     public static var displayString: String {
