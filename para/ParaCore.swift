@@ -15,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "51"
-    static let buildTimestamp: String = "2026-01-03 17:41:53 UTC"
+    static let buildNumber: String = "54"
+    static let buildTimestamp: String = "2026-01-03 17:56:00 UTC"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
@@ -1063,7 +1063,7 @@ extension Para {
             }
 
             do {
-                let content = try String(contentsOfFile: mainFilePath, encoding: .utf8)
+                let content = try ParaFileSystem.readFileContentsOrThrow(atPath: mainFilePath)
 
                 if ParaGlobals.jsonMode {
                     let data: [String: Any] = [
@@ -1130,7 +1130,7 @@ extension Para {
             }
 
             do {
-                let content = try String(contentsOfFile: mainFilePath, encoding: .utf8)
+                let content = try ParaFileSystem.readFileContentsOrThrow(atPath: mainFilePath)
                 let lines = content.components(separatedBy: .newlines)
 
                 // Filter lines that start with '* ' (org-mode headings)

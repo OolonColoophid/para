@@ -6,6 +6,11 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// File system operations for PARA items
 public struct ParaFileSystem {
@@ -79,6 +84,33 @@ public struct ParaFileSystem {
         return "\(archivePath)/\(safeName)"
     }
 
+    // MARK: - File Reading (POSIX)
+
+    /// Read file contents using POSIX open(O_RDONLY) to bypass Dropbox advisory locks.
+    /// Falls back gracefully when the file cannot be read.
+    public static func readFileContents(atPath path: String, encoding: String.Encoding = .utf8) -> String? {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { return nil }
+        let size = Int(st.st_size)
+        guard size > 0 else { return "" }
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: size)
+        defer { buffer.deallocate() }
+        let bytesRead = read(fd, buffer, size)
+        guard bytesRead > 0 else { return nil }
+        return String(bytes: UnsafeBufferPointer(start: buffer, count: bytesRead), encoding: encoding)
+    }
+
+    /// Throwing variant of readFileContents for call sites that need to propagate errors.
+    public static func readFileContentsOrThrow(atPath path: String, encoding: String.Encoding = .utf8) throws -> String {
+        guard let content = readFileContents(atPath: path, encoding: encoding) else {
+            throw ParaError.fileSystemError("Failed to read file at \(path)")
+        }
+        return content
+    }
+
     // MARK: - File Content
 
     /// Extract description from journal.org file
@@ -86,28 +118,27 @@ public struct ParaFileSystem {
         let folderPath = getParaFolderPath(type: type, name: name)
         let filePath = "\(folderPath)/journal.org"
 
-        do {
-            // Read file line by line, stopping early for efficiency
-            let content = try String(contentsOfFile: filePath, encoding: .utf8)
-            let lines = content.components(separatedBy: .newlines)
-
-            // Only check first 20 lines (descriptions should be at the top of org files)
-            let linesToCheck = min(20, lines.count)
-
-            for i in 0..<linesToCheck {
-                let line = lines[i]
-                if line.hasPrefix("#+DESCRIPTION:") {
-                    // Extract description text, removing the prefix and trimming whitespace
-                    let descPrefix = "#+DESCRIPTION:"
-                    let startIndex = line.index(line.startIndex, offsetBy: descPrefix.count)
-                    return String(line[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-
-            return nil // No description found
-        } catch {
+        // Use POSIX read to bypass Dropbox advisory locks
+        guard let content = readFileContents(atPath: filePath) else {
             return nil // Error reading file
         }
+
+        let lines = content.components(separatedBy: .newlines)
+
+        // Only check first 20 lines (descriptions should be at the top of org files)
+        let linesToCheck = min(20, lines.count)
+
+        for i in 0..<linesToCheck {
+            let line = lines[i]
+            if line.hasPrefix("#+DESCRIPTION:") {
+                // Extract description text, removing the prefix and trimming whitespace
+                let descPrefix = "#+DESCRIPTION:"
+                let startIndex = line.index(line.startIndex, offsetBy: descPrefix.count)
+                return String(line[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        return nil // No description found
     }
 
     // MARK: - Folder Operations
@@ -161,14 +192,20 @@ public struct ParaFileSystem {
         try fileManager.moveItem(atPath: expandedFrom, toPath: expandedTo)
     }
 
-    /// Delete a directory
+    /// Delete a directory by moving it to the macOS Trash
+    /// Items can be recovered from Trash until it is emptied
     public static func deleteDirectory(at path: String) throws {
         let expandedPath = (path as NSString).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expandedPath) {
-            try FileManager.default.removeItem(atPath: expandedPath)
-        } else {
-            throw NSError(domain: "com.para", code: 1, userInfo: [NSLocalizedDescriptionKey: "Directory does not exist"])
+        let url = URL(fileURLWithPath: expandedPath)
+
+        guard FileManager.default.fileExists(atPath: expandedPath) else {
+            throw NSError(domain: "com.para", code: 1,
+                         userInfo: [NSLocalizedDescriptionKey: "Directory does not exist at \(expandedPath)"])
         }
+
+        // Move to Trash instead of permanent deletion for safety
+        var trashedItemURL: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashedItemURL)
     }
 
     // MARK: - Folder Queries
