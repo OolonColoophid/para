@@ -15,8 +15,8 @@ import AppKit
 // MARK: CLI arguments
 struct Para: ParsableCommand {
     static let versionString: String = "0.1"
-    static let buildNumber: String = "54"
-    static let buildTimestamp: String = "2026-01-03 17:56:00 UTC"
+    static let buildNumber: String = "PARA_BUILD_NUMBER"
+    static let buildTimestamp: String = "PARA_BUILD_TIMESTAMP"
 
     static let configuration = CommandConfiguration(
         abstract: "A utility for managing a local PARA organization system.",
@@ -222,7 +222,7 @@ extension Para {
         var type: FolderType // Changed to Enum
         @Argument(help: "Name of the folder") var name: String
         @Flag(inversion: .prefixedNo, help: "Provide additional details on success.") var verbose = false
-        @Flag(inversion: .prefixedNo, help: "Opens the .org file after project or Area created.") var openOnCreate = true
+        @Flag(inversion: .prefixedNo, help: "Open the .org file after creation.") var openOnCreate = false
         @OptionGroup var globalOptions: Para
 
         func validate() throws {
