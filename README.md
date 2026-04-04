@@ -44,6 +44,8 @@ para open project my-first-project
 - Delete unwanted projects and areas
 - List existing projects and areas
 - Open projects and areas in the associated application (usually Emacs)
+- Fuzzy-match item names for non-destructive lookup and navigation commands
+- Generate shell completion scripts, including zsh completion
 
 ## Installation
 
@@ -110,6 +112,8 @@ SUBCOMMANDS:
   See 'para help <subcommand>' for detailed help.
 ```
 
+Non-destructive commands such as `open`, `reveal`, `terminal`, `directory`, `path`, `read`, `headings`, `search project`, `search area`, and `agenda --project/--area` accept fuzzy item names. Exact matches still win. Destructive commands such as `archive`, `delete`, and `migrate` remain exact-only.
+
 ### Examples
 
 - Create a new project:
@@ -136,6 +140,32 @@ SUBCOMMANDS:
   ```
   para open project roofBuild
   ```
+
+- Open a project with a fuzzy name:
+  ```
+  para open project roof
+  ```
+
+## Shell Completion
+
+Para uses Swift ArgumentParser's built-in completion script generation.
+
+### zsh
+
+```bash
+mkdir -p ~/.zsh/completions
+para --generate-completion-script zsh > ~/.zsh/completions/_para
+```
+
+Make sure your `~/.zshrc` includes:
+
+```bash
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit
+compinit
+```
+
+Then restart your shell or run `exec zsh`.
 
 ## MCP Server Integration
 

@@ -340,3 +340,130 @@ final class ParaBugFixTests: XCTestCase {
         return String(cString: value)
     }
 }
+
+final class ParaFuzzyMatchTests: XCTestCase {
+    private var tempRoot: URL!
+    private var paraHome: URL!
+    private var archiveHome: URL!
+    private var originalParaHome: String?
+    private var originalParaArchive: String?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+
+        originalParaHome = getenvValue("PARA_HOME")
+        originalParaArchive = getenvValue("PARA_ARCHIVE")
+
+        let baseTemp = FileManager.default.temporaryDirectory
+        tempRoot = baseTemp.appendingPathComponent("para-fuzzy-tests-\(UUID().uuidString)")
+        paraHome = tempRoot.appendingPathComponent("home")
+        archiveHome = tempRoot.appendingPathComponent("archive")
+
+        try FileManager.default.createDirectory(at: paraHome.appendingPathComponent("projects"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: paraHome.appendingPathComponent("areas"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: paraHome.appendingPathComponent("resources"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: archiveHome, withIntermediateDirectories: true)
+
+        setenv("PARA_HOME", paraHome.path, 1)
+        setenv("PARA_ARCHIVE", archiveHome.path, 1)
+    }
+
+    override func tearDownWithError() throws {
+        if let originalParaHome {
+            setenv("PARA_HOME", originalParaHome, 1)
+        } else {
+            unsetenv("PARA_HOME")
+        }
+
+        if let originalParaArchive {
+            setenv("PARA_ARCHIVE", originalParaArchive, 1)
+        } else {
+            unsetenv("PARA_ARCHIVE")
+        }
+
+        if let tempRoot {
+            try? FileManager.default.removeItem(at: tempRoot)
+        }
+
+        try super.tearDownWithError()
+    }
+
+    func testResolveFolderNameExactMatchWins() throws {
+        try createProject("alpha")
+        try createProject("alphabet")
+
+        let resolved = try Para.resolveFolderName(type: "project", input: "alpha")
+
+        XCTAssertEqual(resolved.name, "alpha")
+        XCTAssertEqual(resolved.requestedName, "alpha")
+    }
+
+    func testResolveFolderNameUsesUniqueFuzzyMatch() throws {
+        try createProject("weekly-review")
+
+        let resolved = try Para.resolveFolderName(type: "project", input: "weeklyrev")
+
+        XCTAssertEqual(resolved.name, "weekly-review")
+        XCTAssertEqual(resolved.requestedName, "weeklyrev")
+    }
+
+    func testResolveFolderNameFailsForAmbiguousFuzzyMatch() throws {
+        try createProject("roadmap-api")
+        try createProject("roadmap-app")
+
+        XCTAssertThrowsError(try Para.resolveFolderName(type: "project", input: "roadmapa")) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("ambiguous"))
+            XCTAssertTrue(message.contains("roadmap-api"))
+            XCTAssertTrue(message.contains("roadmap-app"))
+        }
+    }
+
+    func testResolveFolderNameFailsWhenNoReasonableFuzzyMatchExists() throws {
+        try createProject("weekly-review")
+
+        XCTAssertThrowsError(try Para.resolveFolderName(type: "project", input: "totally-different")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("No reasonable fuzzy match"))
+        }
+    }
+
+    func testCompleteFolderArgumentFiltersByTypeForCompletion() throws {
+        try createProject("alpha-project")
+        try createArea("alpha-area")
+        try createResource("alpha-resource")
+
+        let projectCompletions = Para.completeFolderArgument(from: ["para", "open", "project"])
+        XCTAssertEqual(projectCompletions, ["alpha-project"])
+
+        let allCompletions = Para.completeFolderArgument(from: ["para", "open"])
+        XCTAssertTrue(allCompletions.contains("alpha-project"))
+        XCTAssertTrue(allCompletions.contains("alpha-area"))
+        XCTAssertTrue(allCompletions.contains("alpha-resource"))
+    }
+
+    private func createProject(_ name: String) throws {
+        try FileManager.default.createDirectory(
+            at: paraHome.appendingPathComponent("projects/\(name)"),
+            withIntermediateDirectories: true
+        )
+    }
+
+    private func createArea(_ name: String) throws {
+        try FileManager.default.createDirectory(
+            at: paraHome.appendingPathComponent("areas/\(name)"),
+            withIntermediateDirectories: true
+        )
+    }
+
+    private func createResource(_ name: String) throws {
+        try FileManager.default.createDirectory(
+            at: paraHome.appendingPathComponent("resources/\(name)"),
+            withIntermediateDirectories: true
+        )
+    }
+
+    private func getenvValue(_ name: String) -> String? {
+        guard let value = getenv(name) else { return nil }
+        return String(cString: value)
+    }
+}

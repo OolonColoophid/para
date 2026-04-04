@@ -66,6 +66,9 @@ struct Para: ParsableCommand {
           PARA_ARCHIVE  - Archive directory (default: ~/Dropbox/archive)
           PARA_MCP_DIR  - MCP server directory (optional override)
 
+        Non-destructive item lookup commands use fuzzy matching. Destructive commands remain exact-only.
+        Generate shell completions with: para --generate-completion-script zsh
+
         For AI usage, add --json flag for machine-readable output.
         """,
         subcommands: [Create.self, Archive.self, Delete.self, Migrate.self, List.self, Open.self, Reveal.self, Terminal.self, Directory.self, Path.self, Read.self, Headings.self, Search.self, Agenda.self, Environment.self, Version.self, AIOverview.self, Doctor.self, ServerSetup.self, ServerStart.self, ServerStartQuickTunnel.self, ServerStartPermanentTunnel.self, ServerStop.self, ServerStatus.self, ServerLogs.self]
@@ -136,6 +139,18 @@ extension Para {
         case project, area, resource
     }
 
+    struct ResolvedFolder {
+        let type: String
+        let requestedName: String
+        let name: String
+    }
+
+    struct FolderResolutionError: LocalizedError {
+        let message: String
+
+        var errorDescription: String? { message }
+    }
+
     /// Extended path types that include special PARA locations
     enum PathType: String, ExpressibleByArgument, CaseIterable {
         case project, area, resource, resources, archive, home
@@ -149,6 +164,189 @@ extension Para {
                 return false
             }
         }
+    }
+
+    static func completeFolders(for type: String) -> [String] {
+        ParaFileSystem.completeFolders(type: type).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    static func completeFolderArgument(from arguments: [String] = CommandLine.arguments) -> [String] {
+        if arguments.contains("project") {
+            return completeFolders(for: "project")
+        }
+        if arguments.contains("area") {
+            return completeFolders(for: "area")
+        }
+        if arguments.contains("resource") {
+            return completeFolders(for: "resource")
+        }
+
+        return completeFolders(for: "project")
+            + completeFolders(for: "area")
+            + completeFolders(for: "resource")
+    }
+
+    static func resolveFolderName(type: String, input: String, allowFuzzy: Bool = true) throws -> ResolvedFolder {
+        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInput.isEmpty else {
+            throw FolderResolutionError(message: "Name cannot be empty")
+        }
+
+        let candidates = completeFolders(for: type)
+
+        if let exactMatch = candidates.first(where: { $0 == trimmedInput }) {
+            return ResolvedFolder(type: type, requestedName: input, name: exactMatch)
+        }
+
+        if let exactCaseInsensitiveMatch = uniqueCaseInsensitiveMatch(for: trimmedInput, in: candidates) {
+            return ResolvedFolder(type: type, requestedName: input, name: exactCaseInsensitiveMatch)
+        }
+
+        guard allowFuzzy else {
+            throw FolderResolutionError(message: "\(type.capitalized) '\(input)' not found")
+        }
+
+        let matches = fuzzyMatches(for: trimmedInput, in: candidates)
+        guard let bestMatch = matches.first else {
+            throw FolderResolutionError(
+                message: "No reasonable fuzzy match for \(type) '\(input)'"
+            )
+        }
+
+        let bestCandidates = matches.filter { $0.score == bestMatch.score }.map(\.name)
+        if bestCandidates.count > 1 {
+            throw FolderResolutionError(
+                message: "'\(input)' is ambiguous for \(type). Candidates: \(bestCandidates.joined(separator: ", "))"
+            )
+        }
+
+        return ResolvedFolder(type: type, requestedName: input, name: bestMatch.name)
+    }
+
+    static func resolveFolderOrExit(type: String, input: String, allowFuzzy: Bool = true) -> ResolvedFolder {
+        do {
+            return try resolveFolderName(type: type, input: input, allowFuzzy: allowFuzzy)
+        } catch let error as FolderResolutionError {
+            Para.outputError(error.message)
+        } catch {
+            Para.outputError(error.localizedDescription)
+        }
+
+        fatalError("Unreachable: outputError exits")
+    }
+
+    static func dataForResolvedFolder(
+        _ folder: ResolvedFolder,
+        path: String,
+        extra: [String: Any] = [:]
+    ) -> [String: Any] {
+        var data: [String: Any] = [
+            "type": folder.type,
+            "name": folder.name,
+            "path": path
+        ]
+
+        if folder.requestedName != folder.name {
+            data["requestedName"] = folder.requestedName
+        }
+
+        for (key, value) in extra {
+            data[key] = value
+        }
+
+        return data
+    }
+
+    private static func uniqueCaseInsensitiveMatch(for input: String, in candidates: [String]) -> String? {
+        let normalizedInput = normalizeForMatching(input)
+        let matches = candidates.filter { normalizeForMatching($0) == normalizedInput }
+        return matches.count == 1 ? matches[0] : nil
+    }
+
+    private static func fuzzyMatches(for input: String, in candidates: [String]) -> [(name: String, score: Int)] {
+        candidates.compactMap { candidate in
+            guard let score = fuzzyScore(query: input, candidate: candidate) else {
+                return nil
+            }
+            return (candidate, score)
+        }
+        .sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return lhs.score > rhs.score
+        }
+    }
+
+    private static func fuzzyScore(query: String, candidate: String) -> Int? {
+        let normalizedQuery = normalizeForMatching(query)
+        let normalizedCandidate = normalizeForMatching(candidate)
+        let compactQuery = compactForMatching(query)
+        let compactCandidate = compactForMatching(candidate)
+
+        guard !normalizedQuery.isEmpty, !compactQuery.isEmpty else {
+            return nil
+        }
+
+        if normalizedCandidate.hasPrefix(normalizedQuery) {
+            return 10_000 - (normalizedCandidate.count - normalizedQuery.count)
+        }
+
+        let candidateTokens = normalizedCandidate.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        if candidateTokens.contains(where: { $0.hasPrefix(normalizedQuery) }) {
+            return 9_000 - (normalizedCandidate.count - normalizedQuery.count)
+        }
+
+        if compactQuery.count >= 2, compactCandidate.contains(compactQuery) {
+            return 8_000 - (compactCandidate.count - compactQuery.count)
+        }
+
+        guard compactQuery.count >= 2 else {
+            return nil
+        }
+
+        guard let subsequencePenalty = subsequencePenalty(query: compactQuery, candidate: compactCandidate) else {
+            return nil
+        }
+
+        let maxPenalty = max(3, compactQuery.count * 2)
+        guard subsequencePenalty <= maxPenalty else {
+            return nil
+        }
+
+        return 7_000 - subsequencePenalty
+    }
+
+    private static func normalizeForMatching(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private static func compactForMatching(_ value: String) -> String {
+        String(normalizeForMatching(value).filter { $0.isLetter || $0.isNumber })
+    }
+
+    private static func subsequencePenalty(query: String, candidate: String) -> Int? {
+        var queryIndex = query.startIndex
+        var previousMatchIndex: String.Index?
+        var penalty = 0
+
+        for candidateIndex in candidate.indices {
+            guard queryIndex < query.endIndex else { break }
+            if candidate[candidateIndex] == query[queryIndex] {
+                if let previousMatchIndex {
+                    penalty += candidate.distance(from: candidate.index(after: previousMatchIndex), to: candidateIndex)
+                }
+                previousMatchIndex = candidateIndex
+                query.formIndex(after: &queryIndex)
+            }
+        }
+
+        return queryIndex == query.endIndex ? penalty : nil
     }
     
     func run() throws {
@@ -271,20 +469,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    // If no type is specified, show all
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -351,20 +536,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    // If no type is specified, show all
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -435,19 +607,7 @@ extension Para {
         @Argument(
             help: "Name of the item to migrate",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -620,19 +780,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -643,7 +791,8 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: resolved.name)
             // Resources use readme.org, projects/areas use journal.org
             let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
             let mainFileName = type == .resource ? "readme.org" : "journal.org"
@@ -654,15 +803,16 @@ extension Para {
                 NSWorkspace.shared.open(url)
             }
 
-            let data: [String: Any] = [
-                "type": type.rawValue,
-                "name": name,
-                "path": folderPath,
+            let data = Para.dataForResolvedFolder(
+                resolved,
+                path: folderPath,
+                extra: [
                 "journalPath": mainFilePath,
                 "opened": !ParaGlobals.jsonMode
-            ]
+                ]
+            )
 
-            Para.outputSuccess("Opened \(mainFileName) for \(type.rawValue): \(name)", data: data)
+            Para.outputSuccess("Opened \(mainFileName) for \(type.rawValue): \(resolved.name)", data: data)
         }
     }
 
@@ -681,20 +831,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    // If no type is specified, show all
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -705,12 +842,13 @@ extension Para {
         @OptionGroup var globalOptions: Para
 
         func run() throws {
-            revealFolder(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            revealFolder(resolved)
         }
 
-        func revealFolder(type: String, name: String) {
+        func revealFolder(_ folder: ResolvedFolder) {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type, name: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: folder.type, name: folder.name)
 
             // Open the folder in Finder (only in human mode)
             if !ParaGlobals.jsonMode {
@@ -718,14 +856,15 @@ extension Para {
                 NSWorkspace.shared.open(url)
             }
 
-            let data: [String: Any] = [
-                "type": type,
-                "name": name,
-                "path": folderPath,
+            let data = Para.dataForResolvedFolder(
+                folder,
+                path: folderPath,
+                extra: [
                 "revealed": !ParaGlobals.jsonMode
-            ]
+                ]
+            )
 
-            Para.outputSuccess("Revealed folder for \(type): \(name)", data: data)
+            Para.outputSuccess("Revealed folder for \(folder.type): \(folder.name)", data: data)
         }
     }
 
@@ -744,19 +883,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -768,12 +895,13 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: resolved.name)
 
             // Check if folder exists
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir) && isDir.boolValue else {
-                Para.outputError("\(type.rawValue.capitalized) '\(name)' does not exist")
+                Para.outputError("\(type.rawValue.capitalized) '\(resolved.name)' does not exist")
                 return
             }
 
@@ -785,15 +913,16 @@ extension Para {
                 openInTerminal(path: folderPath, terminalApp: terminalApp)
             }
 
-            let data: [String: Any] = [
-                "type": type.rawValue,
-                "name": name,
-                "path": folderPath,
+            let data = Para.dataForResolvedFolder(
+                resolved,
+                path: folderPath,
+                extra: [
                 "terminalApp": terminalApp,
                 "opened": !ParaGlobals.jsonMode
-            ]
+                ]
+            )
 
-            Para.outputSuccess("Opened \(type.rawValue) '\(name)' in \(terminalApp)", data: data)
+            Para.outputSuccess("Opened \(type.rawValue) '\(resolved.name)' in \(terminalApp)", data: data)
         }
 
         private func openInTerminal(path: String, terminalApp: String) {
@@ -873,19 +1002,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -894,21 +1011,18 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: resolved.name)
 
             // Check if the folder exists
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir) && isDir.boolValue else {
-                Para.outputError("\(type.rawValue.capitalized) '\(name)' does not exist")
+                Para.outputError("\(type.rawValue.capitalized) '\(resolved.name)' does not exist")
                 return
             }
             
             if ParaGlobals.jsonMode {
-                let data: [String: Any] = [
-                    "type": type.rawValue,
-                    "name": name,
-                    "path": folderPath
-                ]
+                let data = Para.dataForResolvedFolder(resolved, path: folderPath)
                 Para.outputJSONAny(data)
             } else {
                 print(folderPath)
@@ -945,13 +1059,13 @@ extension Para {
             help: "Name of the project or area (required for project/area types)",
             completion: CompletionKind.custom { _, _, _ in
                 if CommandLine.arguments.contains("project") {
-                    return ParaFileSystem.completeFolders(type: "project")
+                    return Para.completeFolders(for: "project")
                 }
                 if CommandLine.arguments.contains("area") {
-                    return ParaFileSystem.completeFolders(type: "area")
+                    return Para.completeFolders(for: "area")
                 }
                 if CommandLine.arguments.contains("resource") {
-                    return ParaFileSystem.completeFolders(type: "resource")
+                    return Para.completeFolders(for: "resource")
                 }
                 return []
             }
@@ -973,6 +1087,7 @@ extension Para {
 
             let path: String
             let pathType: String
+            let resolved = type.requiresName ? Para.resolveFolderOrExit(type: type.rawValue, input: name!) : nil
 
             switch type {
             case .home:
@@ -985,13 +1100,13 @@ extension Para {
                 path = paraArchive
                 pathType = "archive"
             case .project:
-                path = "\(paraHome)/projects/\(name!)"
+                path = "\(paraHome)/projects/\(resolved!.name)"
                 pathType = "project"
             case .area:
-                path = "\(paraHome)/areas/\(name!)"
+                path = "\(paraHome)/areas/\(resolved!.name)"
                 pathType = "area"
             case .resource:
-                path = "\(paraHome)/resources/\(name!)"
+                path = "\(paraHome)/resources/\(resolved!.name)"
                 pathType = "resource"
             }
 
@@ -1005,8 +1120,11 @@ extension Para {
                     "path": path,
                     "exists": exists
                 ]
-                if let name = name {
-                    data["name"] = name
+                if let resolved = resolved {
+                    data["name"] = resolved.name
+                    if resolved.requestedName != resolved.name {
+                        data["requestedName"] = resolved.requestedName
+                    }
                 }
                 Para.outputJSONAny(data)
             } else {
@@ -1031,19 +1149,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -1052,13 +1158,14 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: resolved.name)
             // Resources use readme.org, projects/areas use journal.org
             let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
 
             // Check if the file exists
             guard FileManager.default.fileExists(atPath: mainFilePath) else {
-                Para.outputError("Main file not found for \(type.rawValue) '\(name)'")
+                Para.outputError("Main file not found for \(type.rawValue) '\(resolved.name)'")
                 return
             }
 
@@ -1066,13 +1173,15 @@ extension Para {
                 let content = try ParaFileSystem.readFileContentsOrThrow(atPath: mainFilePath)
 
                 if ParaGlobals.jsonMode {
-                    let data: [String: Any] = [
-                        "type": type.rawValue,
-                        "name": name,
+                    let data = Para.dataForResolvedFolder(
+                        resolved,
+                        path: folderPath,
+                        extra: [
                         "journalPath": mainFilePath,
                         "content": content,
                         "lineCount": content.components(separatedBy: .newlines).count
-                    ]
+                        ]
+                    )
                     Para.outputJSONAny(data)
                 } else {
                     print(content)
@@ -1098,19 +1207,7 @@ extension Para {
         @Argument(
             help: "Name of the folder",
             completion: CompletionKind.custom { _, _, _ in
-                var items: [String] = []
-                if CommandLine.arguments.contains("project") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                } else if CommandLine.arguments.contains("area") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                } else if CommandLine.arguments.contains("resource") {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                } else {
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "project"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "area"))
-                    items.append(contentsOf: ParaFileSystem.completeFolders(type: "resource"))
-                }
-                return items
+                Para.completeFolderArgument()
             }
         )
         var name: String
@@ -1119,13 +1216,14 @@ extension Para {
 
         func run() throws {
             ParaGlobals.jsonMode = globalOptions.json
-            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: name)
+            let resolved = Para.resolveFolderOrExit(type: type.rawValue, input: name)
+            let folderPath = ParaFileSystem.getParaFolderPath(type: type.rawValue, name: resolved.name)
             // Resources use readme.org, projects/areas use journal.org
             let mainFilePath = type == .resource ? "\(folderPath)/readme.org" : "\(folderPath)/journal.org"
 
             // Check if the file exists
             guard FileManager.default.fileExists(atPath: mainFilePath) else {
-                Para.outputError("Main file not found for \(type.rawValue) '\(name)'")
+                Para.outputError("Main file not found for \(type.rawValue) '\(resolved.name)'")
                 return
             }
 
@@ -1139,17 +1237,19 @@ extension Para {
                 }
 
                 if ParaGlobals.jsonMode {
-                    let data: [String: Any] = [
-                        "type": type.rawValue,
-                        "name": name,
+                    let data = Para.dataForResolvedFolder(
+                        resolved,
+                        path: folderPath,
+                        extra: [
                         "journalPath": mainFilePath,
                         "headings": headings,
                         "headingCount": headings.count
-                    ]
+                        ]
+                    )
                     Para.outputJSONAny(data)
                 } else {
                     if headings.isEmpty {
-                        print("No headings found in \(type.rawValue) '\(name)'")
+                        print("No headings found in \(type.rawValue) '\(resolved.name)'")
                     } else {
                         for heading in headings {
                             print(heading)
@@ -1210,28 +1310,18 @@ extension Para {
                     Para.outputError("Usage: para search project <name> <query>")
                     return
                 }
-                let name = firstArg
-                searchPath = ParaFileSystem.getParaFolderPath(type: "project", name: name)
+                let resolved = Para.resolveFolderOrExit(type: "project", input: firstArg)
+                searchPath = ParaFileSystem.getParaFolderPath(type: "project", name: resolved.name)
                 query = projectName
-
-                guard ParaFileSystem.folderExists(type: "project", name: name) else {
-                    Para.outputError("Project '\(name)' not found")
-                    return
-                }
 
             case "area":
                 guard let areaQuery = secondArg else {
                     Para.outputError("Usage: para search area <name> <query>")
                     return
                 }
-                let name = firstArg
-                searchPath = ParaFileSystem.getParaFolderPath(type: "area", name: name)
+                let resolved = Para.resolveFolderOrExit(type: "area", input: firstArg)
+                searchPath = ParaFileSystem.getParaFolderPath(type: "area", name: resolved.name)
                 query = areaQuery
-
-                guard ParaFileSystem.folderExists(type: "area", name: name) else {
-                    Para.outputError("Area '\(name)' not found")
-                    return
-                }
 
             case "projects":
                 query = firstArg
@@ -1375,9 +1465,11 @@ extension Para {
             var args = [scriptPath, "--days", String(days)]
 
             if let project = project {
-                args.append(contentsOf: ["--project", project])
+                let resolved = Para.resolveFolderOrExit(type: "project", input: project)
+                args.append(contentsOf: ["--project", resolved.name])
             } else if let area = area {
-                args.append(contentsOf: ["--area", area])
+                let resolved = Para.resolveFolderOrExit(type: "area", input: area)
+                args.append(contentsOf: ["--area", resolved.name])
             } else {
                 args.append(contentsOf: ["--scope", scope])
             }
@@ -1663,6 +1755,7 @@ $PARA_HOME/
 **What it does**:
   - Opens {folder}/journal.org in system default app (usually text editor)
   - Useful for quick access to project notes and metadata
+  - Accepts fuzzy item names; exact matches still win
 
 ### 6. REVEAL
 **Purpose**: Open project/area folder in Finder (macOS only)
@@ -1674,6 +1767,7 @@ $PARA_HOME/
   - Opens the folder in macOS Finder specifically
   - Allows browsing all files within the project/area
   - macOS-specific command using NSWorkspace
+  - Accepts fuzzy item names; exact matches still win
 
 ### 7. DIRECTORY
 **Purpose**: Return the absolute path to a project/area directory
@@ -1685,6 +1779,7 @@ $PARA_HOME/
   - Outputs the full filesystem path
   - Useful for scripting and automation
   - Validates folder exists before returning path
+  - Accepts fuzzy item names; exact matches still win
 
 ### 8. READ
 **Purpose**: Read the entire journal.org file of a project or area
@@ -1696,6 +1791,7 @@ $PARA_HOME/
   - Reads and displays the complete journal.org file content
   - Human mode: Prints file content directly to console
   - JSON mode: Returns content with metadata (path, line count)
+  - Accepts fuzzy item names; exact matches still win
 
 ### 9. HEADINGS
 **Purpose**: Read only the org-mode headings from a project/area's journal
@@ -1707,6 +1803,7 @@ $PARA_HOME/
   - Extracts and displays only lines starting with '* ' (org-mode headings)
   - Human mode: Prints each heading on a separate line
   - JSON mode: Returns headings array with count metadata
+  - Accepts fuzzy item names; exact matches still win
 
 ### 10. ENVIRONMENT
 **Purpose**: Display configuration and validate setup
@@ -1728,9 +1825,9 @@ $PARA_HOME/
   - JSON mode returns structured version metadata
 
 ## Tab Completion
-- All commands support tab completion for types (project/area)
-- Folder name arguments complete from existing projects/areas
-- Archive/delete commands complete from available folders
+- Generate a zsh script with `para --generate-completion-script zsh`
+- Folder name arguments complete from existing projects, areas, and resources
+- Non-destructive commands support fuzzy item lookup at execution time; archive/delete still require exact names
 
 ## File Conventions
 - **journal.org**: Main file with Org-mode format
